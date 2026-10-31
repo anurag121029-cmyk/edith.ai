@@ -1,0 +1,1 @@
+{ "name": "EDITH AI", "short_name": "EDITH", "description": "Intelligent personal assistant for stress management, workload, productivity and studying.", "start_url": "/", "display": "standalone", "background_color": "#12122a", "theme_color": "#12122a", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }] }

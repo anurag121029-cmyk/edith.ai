@@ -22,11 +22,25 @@ describe("renderMarkdownToHtml", () => {
     expect(out).toContain("<pre><code>");
     expect(out).not.toContain("<strong>not bold</strong>");
   });
-  it("leaves equations as plain text (no maths typesetting claimed)", () => {
-    const out = renderMarkdownToHtml("The solution is x^2 + 2x + 1 = 0.");
-    expect(out).toContain("x^2 + 2x + 1 = 0");
+  it("renders inline and block maths as styled spans/panels, never KaTeX", () => {
+    const out = renderMarkdownToHtml("The solution is $x^2 + 2x + 1 = 0$.\n\n$$E = mc^2$$");
+    expect(out).toContain('<span class="math">x^2 + 2x + 1 = 0</span>');
+    expect(out).toContain('<div class="math-block">E = mc^2</div>');
     expect(out).not.toContain("katex");
-    expect(out).not.toContain("math");
+  });
+  it("does not turn currency amounts into maths", () => {
+    const out = renderMarkdownToHtml("It costs $5 and $10 in total.");
+    expect(out).not.toContain('class="math"');
+    expect(out).toContain("$5 and $10");
+  });
+  it("does not interpret maths inside fenced code blocks", () => {
+    const out = renderMarkdownToHtml("```\n$not maths$\n```");
+    expect(out).not.toContain('class="math"');
+  });
+  it("escapes HTML inside maths spans", () => {
+    const out = renderMarkdownToHtml("Value: $<b>x</b>$.");
+    expect(out).not.toContain("<b>x</b>");
+    expect(out).toContain("&lt;b&gt;x&lt;/b&gt;");
   });
 });
 

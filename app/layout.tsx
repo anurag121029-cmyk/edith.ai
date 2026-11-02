@@ -17,5 +17,9 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { themeColor: "#12122a" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en"><body>{children}<SiteFooter /><ServiceWorker /></body></html>;
+  return <html lang="en" suppressHydrationWarning><body>
+    {/* Apply the saved theme before first paint (localStorage only; the
+        signed-in DB theme in user_settings is applied by ThemeToggle). */}
+    <script dangerouslySetInnerHTML={{ __html: "try{document.documentElement.dataset.theme=localStorage.getItem('edith-theme')==='light'?'light':'dark'}catch(e){}" }} />
+    {children}<SiteFooter /><ServiceWorker /></body></html>;
 }

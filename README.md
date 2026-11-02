@@ -55,7 +55,7 @@ Without Supabase/Gemini keys the app still runs: auth/data pages show an explici
 The service worker caches only the app shell/static assets — never `/api/` or private data. Offline, an explicit notice is shown; AI needs a connection.
 
 ## 7. Features
-Landing, signup/login/email confirmation/password reset, onboarding (also repairs a missing profile), dashboard computed from your real records, persistent chat (rename/delete/search conversations, copy, regenerate, save-as-memory, lightweight markdown, relevant saved memories injected into context with a UI note), study assistant + session log, task CRUD with filters/overdue, workload analyser, mood/stress check-ins, weekly reports (generated from real data, print → Save as PDF; one report per user per week — regenerating updates the existing report instead of duplicating it), Remember My Context (CRUD, keyword search, enable/disable, clear all, secret-blocking), vision Q&A, image generation (only when the configured model returns image data), voice (browser Web Speech API), settings with metadata-only JSON data export (full message bodies only with explicit opt-in) and account deletion, `/api/health`, authenticated `/integrations` status panel, plus public site pages (`/features`, `/privacy`, `/terms`), a site footer, 404/loading/error pages, and `sitemap.xml`/`robots.txt` covering public routes only.
+Landing, signup/login/email confirmation/password reset, onboarding (also repairs a missing profile), dashboard computed from your real records, persistent chat (rename/delete/search conversations, copy, regenerate, save-as-memory, lightweight markdown with styled maths, relevant saved memories injected into context with a UI note; replies stream from `/api/chat/stream` with a stop control and automatic fallback to `/api/chat`), study assistant + session log, task CRUD with filters/overdue, workload analyser, mood/stress check-ins, weekly reports (generated from real data, server-generated PDF download per saved report plus print → Save as PDF as fallback; email delivery via the Resend provider interface when configured, summary only; one report per user per week — regenerating updates the existing report instead of duplicating it), Remember My Context (CRUD, keyword search, enable/disable, clear all, secret-blocking), vision Q&A, image generation (only when the configured model returns image data), voice (browser Web Speech API), settings with a dark/light theme toggle (persisted to `user_settings.theme` when signed in, localStorage otherwise) and metadata-only JSON data export (full message bodies only with explicit opt-in) and account deletion, `/api/health`, authenticated `/integrations` status panel, plus public site pages (`/features`, `/privacy`, `/terms`), a site footer, 404/loading/error pages, and `sitemap.xml`/`robots.txt` covering public routes only.
 
 API rate limits (per IP, per 60 seconds, in-memory; a `429` response includes a `Retry-After` header): `/api/chat` 30/min, `/api/vision` and `/api/image` 10/min each. Limits do not store any user content.
 
@@ -63,8 +63,8 @@ API rate limits (per IP, per 60 seconds, in-memory; a `429` response includes a 
 The design system was refreshed in `app/globals.css` (deeper liquid-glass panels with subtler borders and softer gradients, a clearer spacing scale, larger/bolder heading hierarchy, refined primary/secondary/danger buttons with hover/focus/disabled states, higher-contrast muted text, badges, notices and a shared empty-state pattern), the landing page now has a clearer hero with signup/features CTAs, a "How it works" strip and a feature grid linking to real pages (no invented statistics, testimonials, user counts or pricing), and the app shell has a polished sidebar with an active-page state plus a mobile bottom nav with icons, labels and safe-area padding. The chat layout now stacks on small screens instead of overflowing. No routes were renamed, and no Supabase schema, auth flow, API behaviour, rate limit or business logic was changed in this refresh.
 
 ## 8. Known limitations
-- Email report delivery is **not implemented** (no provider configured) — the app says so and offers print/PDF instead. Sending to parents/third parties is intentionally not a feature.
-- PDF export is browser print → "Save as PDF", not a server-generated file.
+- Email report delivery works only when a provider is configured (`EMAIL_PROVIDER=resend` + `RESEND_API_KEY`); without them the app returns a clear "not configured" error and claims no delivery. Sending to parents/third parties is intentionally not a feature.
+- PDF export: saved reports download as a real server-generated PDF (`/api/report-pdf`, owner-only); browser print → "Save as PDF" remains the fallback if that route fails.
 - Image generation depends entirely on the configured Gemini model supporting it; the default text model will return a clear error.
 - Voice recognition depends on the browser (best in Chrome/Edge); Safari support is limited.
 - Semantic/vector memory search is not included — memories are retrieved per-user by keyword relevance (title > category > content), not embeddings.
@@ -84,19 +84,20 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 - Vision: upload validation (type/size), Gemini vision Q&A; uploads are **not stored**.
 - Image generation: real Gemini route; returns an image only when the model returns image data, otherwise an honest 422 — no placeholders.
 - Dashboard computed from real records with empty states (no fake charts or hardcoded stats).
-- Weekly reports: generated from real data, one per user per week (upsert + unique index, migration 0002), print → Save as PDF.
+- Weekly reports: generated from real data, one per user per week (upsert + unique index, migration 0002), server-generated PDF download (owner-only, pdf-lib) plus print → Save as PDF fallback, and a Resend provider interface for emailing the summary only (honest "not configured" error when unset).
+- Chat streaming: `/api/chat/stream` (same validation, rate limit, history/memory caps as `/api/chat`), visible streaming indicator, stop control, automatic fallback to `/api/chat`, final reply saved as one message.
+- Light mode: dark/light toggle in the sidebar and Settings, persisted to `user_settings.theme` when signed in (migration 0003) and to localStorage otherwise; dark remains the default.
+- Maths: inline `$...$` and block `$$...$$` render as styled maths in the dependency-free markdown renderer (styled, not KaTeX — see lib/markdown.ts).
 - Settings: profile edit, memory controls, metadata-only data export (full message bodies only with explicit opt-in), server-side account deletion route.
 - Security: server-only keys, RLS on every user table, input validation, file validation, API rate limits (chat 30/min, vision/image 10/min, 429 + Retry-After), safe error messages.
 - Integration status panel: `/integrations` (authenticated, not in public nav) — see its page notes for what "configured" does and does not prove.
 - Public site pages (Features, Privacy, Terms), footer, 404/loading/error pages, sitemap/robots (public routes only), refreshed liquid-glass design.
 
 ### Incomplete (deliberately not claimed as working)
-- Email delivery: no provider — manual print/PDF only. No parent/guardian report feature.
-- Streaming: not implemented — chat responses arrive complete, not streamed.
-- Light mode: dark is the primary theme; light mode is not implemented (the `user_settings.theme` check constraint allows 'light' for the future, but the UI has no light theme).
-- True PDF generation: browser print → "Save as PDF" only, no server PDF file.
-- Maths typesetting: equations render as plain text; KaTeX/MathJax is not included.
-- `uploaded_files` / `user_settings` tables: schema only (migration 0003). The vision flow does not store uploads, and the app still reads preferences from `profiles.preferences`.
+- Email delivery without a configured provider: the Resend interface is implemented, but with no provider/key set (the live default) delivery returns a clear "not configured" error and nothing is sent. No parent/guardian report feature.
+- Maths typesetting: equations render as styled notation (inline `$...$`, block `$$...$$`), NOT KaTeX/MathJax typesetting — fractions/roots render literally (e.g. `\frac{1}{2}`), by design, with no extra dependency.
+- `uploaded_files` table: schema only (migration 0003). The vision flow does not store uploads.
+- `uploaded_files` table: schema only (migration 0003). The vision flow does not store uploads. `user_settings` is now used for the theme only; other preferences are still read from `profiles.preferences`.
 
 ### Unverified live (needs the user's own credentials/environment)
 - Supabase/Gemini end-to-end: signup → profile → chat reply → persistence, with real keys.
@@ -113,5 +114,5 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 | report_preferences | `notification_preferences` | One row per user (`user_id` unique) |
 | report_delivery_logs | `report_deliveries` | — |
 | uploaded_files | `uploaded_files` | Schema only (see above) |
-| user_settings | `user_settings` | Schema only (see above) |
+| user_settings | `user_settings` | Theme column now used by the theme toggle; other settings still in `profiles.preferences` |
 | All others | Same name as spec | `profiles`, `conversations`, `messages`, `tasks`, `mood_checkins`, `study_sessions`, `weekly_reports` (+ `insights`, `voice_sessions` extras) |

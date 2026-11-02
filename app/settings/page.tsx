@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell, Glass } from "@/components/ui";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useUser } from "@/lib/useUser";
 export default function Page(){
   const { user, sb } = useUser();
@@ -32,10 +33,11 @@ export default function Page(){
       <p className="muted">Signed in as {user?.email||"(not signed in)"}</p>
       <form onSubmit={saveProfile}><label htmlFor="n">Display name</label><input id="n" className="input" value={name} onChange={e=>setName(e.target.value)} /><p><button className="btn">Save</button></p></form>
       <p><Link href="/onboarding">Edit onboarding, goals & response style →</Link></p>
+      <p><ThemeToggle /> <span className="muted" style={{ fontSize: ".85rem" }}>Saved to your account when signed in; otherwise kept in this browser only. Dark is the default.</span></p>
       <p><Link href="/memories">Memory controls (enable/disable, clear all) →</Link></p>
     </Glass><div style={{height:12}} />
     <Glass><h3 style={{marginTop:0}}>Notifications & report delivery</h3>
-      <p className="muted">Automatic email delivery is <strong>unavailable</strong> unless an email provider is configured (EMAIL_PROVIDER). Weekly reports can always be generated and printed/downloaded from Insights. EDITH never sends your conversations, wellness data or memories to parents or third parties by default, and has no parent-report feature.</p>
+      <p className="muted">Email delivery works only when a provider is configured (EMAIL_PROVIDER=resend + RESEND_API_KEY); otherwise the Insights &quot;Email this report&quot; button returns a clear &quot;not configured&quot; error and nothing is sent. Only the weekly-report summary is ever emailed, to your own signed-in address — never conversations, memories or reflections, and never to parents or third parties by default (there is no parent-report feature). Weekly reports can always be generated and downloaded as a server PDF from Insights.</p>
     </Glass><div style={{height:12}} />
     <Glass><h3 style={{marginTop:0}}>Your data</h3>
       <p className="muted">Privacy: your rows in Supabase are protected by Row Level Security (only your authenticated user can access them). The Gemini key and service-role key are server-only.</p>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { isSupabaseConfigured } from "@/lib/config";
 import { SidebarNav, MobileNav } from "@/components/NavLinks";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export function Glass({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`glass p-5 ${className}`}>{children}</div>;
@@ -28,6 +29,9 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
       <aside className="sidebar no-print">
         <Link href="/" className="sidebar-brand">✦ EDITH AI</Link>
         <SidebarNav />
+        <div style={{ marginTop: "auto", paddingTop: "1rem" }}>
+          <ThemeToggle />
+        </div>
       </aside>
       <main className="app-main">
         <header className="page-header">

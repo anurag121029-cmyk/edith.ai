@@ -219,6 +219,27 @@ label { display: block; font-size: 0.9rem; font-weight: 600; margin: 0.8rem 0 0.
 .md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; background: rgba(0,0,0,.35); padding: .1rem .3rem; border-radius: 6px; }
 .md pre { overflow-x: auto; background: rgba(0,0,0,.35); padding: .7rem; border-radius: 12px; }
 .md pre code { background: none; padding: 0; }
+/* Styled maths (NOT KaTeX/MathJax typesetting — see lib/markdown.ts).
+   Inline $...$ renders as a highlighted span; block $$...$$ as a panel. */
+.math {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .92em;
+  background: rgba(165, 180, 252, 0.14);
+  border: 1px solid rgba(165, 180, 252, 0.35);
+  border-radius: 6px;
+  padding: .1rem .35rem;
+  white-space: nowrap;
+}
+.math-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: rgba(165, 180, 252, 0.1);
+  border: 1px solid rgba(165, 180, 252, 0.3);
+  border-radius: 12px;
+  padding: .7rem .9rem;
+  margin: .5rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
 
 /* Footer */
 .site-footer { text-align: center; padding: 2.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom)); font-size: 0.85rem; }
@@ -246,6 +267,61 @@ label { display: block; font-size: 0.9rem; font-weight: 600; margin: 0.8rem 0 0.
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Light theme — same glass layout, light tokens. Selected via
+   document.documentElement.dataset.theme ("dark" is the default when the
+   attribute is absent, so existing dark styling is untouched). */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-0: #eef1fb;
+  --bg-1: #ffffff;
+  --bg-2: #e3e9f7;
+  --text: #17182a;
+  --text-muted: #3d4057;
+  --text-faint: #6b6e85;
+  --accent-1: #6d5df0;
+  --accent-2: #4338ca;
+  --accent-soft: #4f46e5;
+  --success: #15803d;
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-strong: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(23, 24, 42, 0.14);
+  --glass-border-soft: rgba(23, 24, 42, 0.09);
+  --shadow: 0 12px 40px rgba(23, 24, 42, 0.12);
+  --shadow-soft: 0 6px 24px rgba(23, 24, 42, 0.08);
+}
+[data-theme="light"] body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(139, 125, 240, 0.22), transparent),
+    radial-gradient(1000px 500px at 90% 0%, rgba(14, 165, 164, 0.16), transparent),
+    linear-gradient(160deg, var(--bg-0), var(--bg-1) 55%, var(--bg-2));
+}
+[data-theme="light"] a { color: #4338ca; }
+[data-theme="light"] a:hover { color: #312e81; }
+[data-theme="light"] .glass:hover { border-color: rgba(23, 24, 42, 0.22); }
+[data-theme="light"] .btn-secondary { background: rgba(23, 24, 42, 0.06); color: var(--text); }
+[data-theme="light"] .btn-secondary:hover { background: rgba(23, 24, 42, 0.11); }
+[data-theme="light"] .input { border-color: rgba(23, 24, 42, 0.25); background: rgba(255, 255, 255, 0.9); color: var(--text); }
+[data-theme="light"] .input::placeholder { color: var(--text-faint); }
+[data-theme="light"] .input:hover { border-color: rgba(23, 24, 42, 0.4); }
+[data-theme="light"] .error { color: #b91c1c; }
+[data-theme="light"] .badge { background: rgba(23, 24, 42, 0.06); color: var(--text); }
+[data-theme="light"] .notice, [data-theme="light"] .empty-state { background: rgba(23, 24, 42, 0.04); }
+[data-theme="light"] .sidebar-brand { color: var(--text); }
+[data-theme="light"] .nav-link { color: var(--text); background: rgba(23, 24, 42, 0.05); }
+[data-theme="light"] .nav-link:hover { background: rgba(23, 24, 42, 0.11); }
+[data-theme="light"] .nav-link.active { background: rgba(124, 108, 240, 0.22); border-color: rgba(79, 70, 229, 0.5); }
+[data-theme="light"] .mobile-nav { background: rgba(255, 255, 255, 0.95); }
+[data-theme="light"] .mobile-nav-link { color: var(--text); }
+[data-theme="light"] .mobile-nav-link.active { background: rgba(124, 108, 240, 0.22); }
+[data-theme="light"] .chat-bubble-user { background: rgba(124, 108, 240, 0.28); }
+[data-theme="light"] .chat-bubble-edith { background: rgba(23, 24, 42, 0.05); }
+[data-theme="light"] .md code { background: rgba(23, 24, 42, 0.08); }
+[data-theme="light"] .md pre { background: rgba(23, 24, 42, 0.06); }
+[data-theme="light"] .math { background: rgba(79, 70, 229, 0.1); border-color: rgba(79, 70, 229, 0.35); color: #312e81; }
+[data-theme="light"] .math-block { background: rgba(79, 70, 229, 0.08); border-color: rgba(79, 70, 229, 0.3); color: #312e81; }
+[data-theme="light"] .spinner { border-color: rgba(23, 24, 42, 0.2); border-top-color: var(--accent-soft); }
+[data-theme="light"] .card-grid a:hover h3 { color: #4338ca; }
 
 @media print {
   .no-print { display: none !important; }

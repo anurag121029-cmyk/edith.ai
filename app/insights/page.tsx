@@ -7,6 +7,14 @@ type Report={id:string;week_start:string;week_end:string;summary:string;created_
 export default function Page(){
   const { user, sb } = useUser();
   const [reports,setReports]=useState<Report[]>([]); const [current,setCurrent]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const [pdfBusy,setPdfBusy]=useState<string|null>(null); const [emailBusy,setEmailBusy]=useState<string|null>(null); const [note,setNote]=useState("");
+  async function downloadPdf(r:Report){ setPdfBusy(r.id); setNote(""); setErr("");
+    try{ const res=await fetch(`/api/report-pdf?id=${encodeURIComponent(r.id)}`); if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||"Server PDF failed"); }
+      const blob=await res.blob(); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`edith-weekly-report-${r.week_start}.pdf`; a.click(); URL.revokeObjectURL(a.href); setNote("Server PDF downloaded.");
+    }catch(e){ setErr((e as Error).message+" — falling back to print: use Print / save as PDF."); window.print(); } finally{ setPdfBusy(null); } }
+  async function emailReport(r:Report){ setEmailBusy(r.id); setNote(""); setErr("");
+    try{ const res=await fetch("/api/reports/email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reportId:r.id})}); const d=await res.json(); if(!res.ok) throw new Error(d.error||"Email failed"); setNote("Weekly report emailed to your signed-in address (summary only).");
+    }catch(e){ setErr((e as Error).message); } finally{ setEmailBusy(null); } }
   async function load(){ if(!sb||!user) return; const {data}=await sb.from("weekly_reports").select("*").order("created_at",{ascending:false}); setReports((data||[]) as Report[]); }
   useEffect(()=>{ load(); /* eslint-disable-next-line */ },[user]);
   async function generate(){ if(!sb||!user) return; setBusy(true); setErr("");
@@ -21,9 +29,9 @@ export default function Page(){
   return <AppShell title="Weekly insights & reports"><Glass>
     <p className="muted">Reports are generated from your real tasks, study, workload and (optional) self-reported mood data for the current week.</p>
     <p><button className="btn" onClick={generate} disabled={busy}>{busy?"Generating…":"Generate this week's report"}</button> <button className="btn btn-secondary" onClick={()=>window.print()}>Print / save as PDF</button></p>
-    <p className="muted" style={{fontSize:".85rem"}}>PDF export uses your browser&apos;s print dialog (&quot;Save as PDF&quot;) — there is no server PDF file. <strong>Email delivery: unavailable</strong> — no email provider is configured (EMAIL_PROVIDER is empty), so no report is emailed. Download/print is the available option.</p>
-    {err&&<p className="error" role="alert">{err}</p>} {current&&<div style={{whiteSpace:"pre-wrap"}}>{current}</div>}
+    <p className="muted" style={{fontSize:".85rem"}}>Each saved report can be downloaded as a real server-generated PDF (Download PDF below). Print / save as PDF remains the fallback if the server PDF fails. Email delivery uses the configured provider only (EMAIL_PROVIDER=resend + RESEND_API_KEY); if none is configured, emailing returns a clear &quot;not configured&quot; error and no delivery is claimed — only the report summary is ever emailed, never conversations, memories or reflections.</p>
+    {err&&<p className="error" role="alert">{err}</p>} {note&&<p className="success" role="status">{note}</p>} {current&&<div style={{whiteSpace:"pre-wrap"}}>{current}</div>}
     <h3>Report history</h3>
-    {reports.length? <ul>{reports.map(r=><li key={r.id}><strong>{r.week_start} → {r.week_end}</strong><p style={{whiteSpace:"pre-wrap"}}>{r.summary}</p></li>)}</ul> : <EmptyState text="No reports generated yet." />}
+    {reports.length? <ul>{reports.map(r=><li key={r.id}><strong>{r.week_start} → {r.week_end}</strong><p style={{whiteSpace:"pre-wrap"}}>{r.summary}</p><p style={{display:"flex",gap:".5rem",flexWrap:"wrap"}}><button className="btn btn-secondary" onClick={()=>downloadPdf(r)} disabled={pdfBusy===r.id}>{pdfBusy===r.id?"Preparing PDF…":"Download PDF"}</button><button className="btn btn-secondary" onClick={()=>emailReport(r)} disabled={emailBusy===r.id}>{emailBusy===r.id?"Sending…":"Email this report"}</button></p></li>)}</ul> : <EmptyState text="No reports generated yet." />}
   </Glass></AppShell>;
 }

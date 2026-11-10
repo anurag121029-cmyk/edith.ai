@@ -4,7 +4,24 @@ export type GeminiGenerateOptions = {
   model?: string;
   /** Passed through as the request's generationConfig (e.g. responseModalities). */
   generationConfig?: Record<string, unknown>;
+  /** Per-model time slice for text calls (default 10s). A model that has
+   *  not answered within its slice is abandoned and the chain moves on,
+   *  so a slow first model cannot eat the whole call budget. */
+  perModelSliceMs?: number;
 };
+
+/** Per-model slice for text calls: each model gets at most 10s of the
+ *  30s total budget, so a slow-but-answering first model (gemini-3.8-flash
+ *  was observed taking ~25s for a simple question) falls over to the next
+ *  model instead of making the user wait the whole time. */
+export const GEMINI_PER_MODEL_SLICE_MS = 10000;
+/** Streaming: if a model produces no chunk within 10s of the request,
+ *  abort that model's stream and try the next model. Once chunks are
+ *  flowing, only the overall timeout applies. */
+export const GEMINI_FIRST_CHUNK_DEADLINE_MS = 10000;
+/** Text calls (chat/stream/vision) ask for at most 1024 output tokens,
+ *  so replies stay short and finish sooner. Image calls are unaffected. */
+export const GEMINI_TEXT_MAX_OUTPUT_TOKENS = 1024;
 
 type ProviderFailure = Error & { status: number; retryable: boolean; providerStatus: string | number };
 function providerFailure(message: string, retryable: boolean, providerStatus: string | number): ProviderFailure {
@@ -61,30 +78,43 @@ async function generateOnce(
  * (GEMINI_MODEL, default gemini-3.8-flash) first; on 404, 429, 5xx or a
  * timeout it falls back in order to gemini-3.6-flash then
  * gemini-3.5-flash-lite, and only then errors — naming every model tried
- * and the last failure, instead of a bare "provider error". The whole
- * chain is bounded by timeoutMs in total, so fallbacks cannot stack
- * 30-second waits. An explicit opts.model (used by image generation)
- * never falls back: a text model could never return image data, so a
- * single-model retry is kept there instead.
+ * and the last failure, instead of a bare "provider error". Each text
+ * model gets only a short slice of the total budget (10s by default):
+ * a model that is merely slow — answering, but only after ~25s — is
+ * abandoned at the end of its slice so the next model can answer sooner.
+ * The whole chain is bounded by timeoutMs in total, so fallbacks cannot
+ * stack 30-second waits. Text calls also cap output at 1024 tokens for
+ * shorter, faster replies. An explicit opts.model (used by image
+ * generation) never falls back and keeps its old behaviour: a text model
+ * could never return image data, so a single-model retry is kept there
+ * instead, with the full remaining budget and no token cap.
  */
 export async function geminiGenerate(parts: unknown[], timeoutMs = 30000, opts: GeminiGenerateOptions = {}): Promise<{ text?: string; imageData?: string; imageMime?: string }> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw Object.assign(new Error("Gemini is not configured on the server (GEMINI_API_KEY missing)."), { status: 503 });
   const explicit = Boolean(opts.model);
   const models = explicit ? [opts.model as string] : [geminiModel, ...geminiFallbackModels];
+  const sliceMs = opts.perModelSliceMs ?? GEMINI_PER_MODEL_SLICE_MS;
+  // Text calls cap output tokens; an explicit (image) call passes its own
+  // generationConfig through untouched.
+  const generationConfig = explicit
+    ? opts.generationConfig
+    : { maxOutputTokens: GEMINI_TEXT_MAX_OUTPUT_TOKENS, ...(opts.generationConfig || {}) };
   const deadline = Date.now() + timeoutMs;
   const tried: string[] = [];
   for (const model of models) {
     // Explicit (image) model keeps the old behaviour: one retry on a
-    // retryable failure. Fallback models get one attempt each.
+    // retryable failure, full remaining budget. Fallback models get one
+    // attempt each, capped at one time slice.
     for (let attempt = 0; attempt < (explicit ? 2 : 1); attempt++) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
         tried.push(`${model} (timeout)`);
         break;
       }
+      const perAttempt = explicit ? remaining : Math.min(sliceMs, remaining);
       try {
-        return await generateOnce(model, parts, opts.generationConfig, key, remaining);
+        return await generateOnce(model, parts, generationConfig, key, perAttempt);
       } catch (e) {
         if (!isProviderFailure(e)) throw e;
         if (!e.retryable) throw e;
@@ -118,7 +148,7 @@ export async function geminiGenerateImage(parts: unknown[], timeoutMs = 30000): 
     generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
   });
 }
-export const SYSTEM_PROMPT = "You are EDITH, a supportive personal assistant for productivity, studying, workload and non-clinical stress management. Be clear and helpful. For maths, show readable step-by-step explanations. Never claim to diagnose a medical or mental-health condition.";
+export const SYSTEM_PROMPT = "You are EDITH, a supportive personal assistant for productivity, studying, workload and non-clinical stress management. Be clear and helpful. For maths, show readable step-by-step explanations. Never claim to diagnose a medical or mental-health condition. Keep answers concise — a few short sentences or bullet points — unless the user asks for detail.";
 
 /**
  * Streaming variant of geminiGenerate: yields text chunks as they arrive
@@ -127,15 +157,48 @@ export const SYSTEM_PROMPT = "You are EDITH, a supportive personal assistant for
  * Throws the same 503 when no key is configured, and 502 on provider
  * errors, so callers can fall back to the non-streaming route.
  */
-async function* yieldStreamChunks(res: Response, timeoutMs: number): AsyncGenerator<string, void, unknown> {
+/** Marker for a stream that produced no chunk within the first-chunk
+ *  deadline: the caller treats it as a retryable failure and tries the
+ *  next model, instead of waiting for a stalled model. */
+function firstChunkTimeoutError(): Error & { firstChunkTimeout: true } {
+  return Object.assign(new Error("No chunk received within the first-chunk deadline."), { firstChunkTimeout: true as const });
+}
+function isFirstChunkTimeout(e: unknown): boolean {
+  return e instanceof Error && (e as { firstChunkTimeout?: unknown }).firstChunkTimeout === true;
+}
+
+async function* yieldStreamChunks(
+  res: Response,
+  timeoutMs: number,
+  firstChunkDeadlineMs: number,
+): AsyncGenerator<string, void, unknown> {
   const reader = (res.body as ReadableStream<Uint8Array>).getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   const deadline = Date.now() + timeoutMs;
+  let firstChunkSeen = false;
   try {
     for (;;) {
       if (Date.now() > deadline) break;
-      const { done, value } = await reader.read();
+      // Until the first chunk arrives, each read races a deadline timer:
+      // a model that connects but never starts sending is abandoned so
+      // the next model can be tried. Once chunks are flowing, reads wait
+      // normally under the overall deadline above.
+      let readResult: ReadableStreamReadResult<Uint8Array>;
+      if (!firstChunkSeen) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeoutP = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(firstChunkTimeoutError()), firstChunkDeadlineMs);
+        });
+        try {
+          readResult = await Promise.race([reader.read(), timeoutP]);
+        } finally {
+          clearTimeout(timer);
+        }
+      } else {
+        readResult = await reader.read();
+      }
+      const { done, value } = readResult;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let nl: number;
@@ -148,7 +211,12 @@ async function* yieldStreamChunks(res: Response, timeoutMs: number): AsyncGenera
         try {
           const data = JSON.parse(payload);
           const outParts = data?.candidates?.[0]?.content?.parts || [];
-          for (const p of outParts) if (p.text) yield p.text;
+          for (const p of outParts) {
+            if (p.text) {
+              firstChunkSeen = true;
+              yield p.text;
+            }
+          }
         } catch {
           /* skip a malformed SSE line rather than aborting the stream */
         }
@@ -163,46 +231,84 @@ async function* yieldStreamChunks(res: Response, timeoutMs: number): AsyncGenera
   }
 }
 
+export type GeminiStreamOptions = {
+  /** No chunk within this long of a request: abandon that model and try
+   *  the next one (default 10s). */
+  firstChunkDeadlineMs?: number;
+};
+
 export async function* geminiGenerateStream(
   parts: unknown[],
   signal: AbortSignal,
   timeoutMs = 30000,
+  opts: GeminiStreamOptions = {},
 ): AsyncGenerator<string, void, unknown> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw Object.assign(new Error("Gemini is not configured on the server (GEMINI_API_KEY missing)."), { status: 503 });
   // Same fallback chain as geminiGenerate: configured model first, then
-  // gemini-3.6-flash, then gemini-3.5-flash-lite, on 404/429/5xx or a
-  // failed request. A user cancellation (signal aborted) is never
-  // retried — it is rethrown immediately.
+  // gemini-3.6-flash, then gemini-3.5-flash-lite, on 404/429/5xx, a
+  // failed request, or no chunk within the first-chunk deadline. A user
+  // cancellation (signal aborted) is never retried — it is rethrown
+  // immediately.
+  const firstChunkDeadlineMs = opts.firstChunkDeadlineMs ?? GEMINI_FIRST_CHUNK_DEADLINE_MS;
   const models = [geminiModel, ...geminiFallbackModels];
   const tried: string[] = [];
   for (const model of models) {
-    let res: Response;
+    // Per-model controller: forwards user cancellation for the whole
+    // attempt, and aborts the fetch itself if the model does not even
+    // start responding within the first-chunk deadline.
+    const ctrl = new AbortController();
+    const forwardAbort = () => ctrl.abort();
+    signal.addEventListener("abort", forwardAbort);
+    // If the user already cancelled, fail fast instead of starting a
+    // real request: the fetch below then rejects with an AbortError,
+    // which is rethrown (never retried) below.
+    if (signal.aborted) ctrl.abort();
     try {
-      res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${key}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal,
-          body: JSON.stringify({ contents: [{ parts }] }),
-        },
-      );
-    } catch (e) {
-      if (signal.aborted) throw e;
-      tried.push(`${model} (request failed)`);
-      continue;
-    }
-    if (!res.ok || !res.body) {
-      if (signal.aborted) throw Object.assign(new Error("Stream cancelled."), { status: 499 });
-      if (isRetryableStatus(res.status)) {
-        tried.push(`${model} (${res.status})`);
+      const fetchTimer = setTimeout(() => ctrl.abort(), firstChunkDeadlineMs);
+      let res: Response;
+      try {
+        res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${key}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: ctrl.signal,
+            body: JSON.stringify({
+              contents: [{ parts }],
+              generationConfig: { maxOutputTokens: GEMINI_TEXT_MAX_OUTPUT_TOKENS },
+            }),
+          },
+        );
+      } catch (e) {
+        if (signal.aborted) throw e;
+        tried.push(`${model} (${ctrl.signal.aborted ? "no first chunk" : "request failed"})`);
         continue;
+      } finally {
+        clearTimeout(fetchTimer);
       }
-      throw Object.assign(new Error(`Gemini provider error ${res.status} from model ${model}.`), { status: 502 });
+      if (!res.ok || !res.body) {
+        if (signal.aborted) throw Object.assign(new Error("Stream cancelled."), { status: 499 });
+        if (isRetryableStatus(res.status)) {
+          tried.push(`${model} (${res.status})`);
+          continue;
+        }
+        throw Object.assign(new Error(`Gemini provider error ${res.status} from model ${model}.`), { status: 502 });
+      }
+      try {
+        yield* yieldStreamChunks(res, timeoutMs, firstChunkDeadlineMs);
+      } catch (e) {
+        if (signal.aborted) throw e;
+        if (isFirstChunkTimeout(e)) {
+          tried.push(`${model} (no first chunk)`);
+          continue;
+        }
+        throw e;
+      }
+      return;
+    } finally {
+      signal.removeEventListener("abort", forwardAbort);
     }
-    yield* yieldStreamChunks(res, timeoutMs);
-    return;
   }
   const detail = tried.length ? tried.join(", ") : "no model attempted";
   const retired = tried.some((t) => t.includes("(404)"));

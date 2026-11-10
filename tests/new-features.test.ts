@@ -32,7 +32,7 @@ describe("image generation model", () => {
     const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
     expect(body.generationConfig).toEqual({ responseModalities: ["TEXT", "IMAGE"] });
   });
-  it("geminiGenerate with no options still uses the chat model and sends no generationConfig", async () => {
+  it("geminiGenerate with no options still uses the chat model and caps output at 1024 tokens", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
@@ -43,7 +43,7 @@ describe("image generation model", () => {
     expect(out.text).toBe("hi");
     expect((fetchImpl.mock.calls[0][0] as string)).toContain("gemini-3.8-flash:generateContent");
     const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
-    expect(body.generationConfig).toBeUndefined();
+    expect(body.generationConfig).toEqual({ maxOutputTokens: 1024 });
   });
 });
 import {

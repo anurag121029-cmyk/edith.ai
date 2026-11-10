@@ -85,9 +85,11 @@ async function generateOnce(
  * The whole chain is bounded by timeoutMs in total, so fallbacks cannot
  * stack 30-second waits. Text calls also cap output at 1024 tokens for
  * shorter, faster replies. An explicit opts.model (used by image
- * generation) never falls back and keeps its old behaviour: a text model
- * could never return image data, so a single-model retry is kept there
- * instead, with the full remaining budget and no token cap.
+ * generation) never falls back to a text model: a text model could never
+ * return image data. It retries once, but only on 5xx or a timeout — a
+ * 429 is a quota error (on the current key the Gemini image quota is 0),
+ * so retrying it seconds later cannot succeed and the caller falls back
+ * to another image provider instead.
  */
 export async function geminiGenerate(parts: unknown[], timeoutMs = 30000, opts: GeminiGenerateOptions = {}): Promise<{ text?: string; imageData?: string; imageMime?: string }> {
   const key = process.env.GEMINI_API_KEY;
@@ -103,9 +105,12 @@ export async function geminiGenerate(parts: unknown[], timeoutMs = 30000, opts: 
   const deadline = Date.now() + timeoutMs;
   const tried: string[] = [];
   for (const model of models) {
-    // Explicit (image) model keeps the old behaviour: one retry on a
-    // retryable failure, full remaining budget. Fallback models get one
-    // attempt each, capped at one time slice.
+    // Explicit (image) model: one retry, but only on 5xx or a timeout,
+    // with the full remaining budget. A 429 quota error is not retried:
+    // on the current key the Gemini image quota is 0, so a retry seconds
+    // later cannot succeed — fail fast so the caller can fall back to
+    // another image provider. Text models get one attempt each, capped
+    // at one time slice.
     for (let attempt = 0; attempt < (explicit ? 2 : 1); attempt++) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
@@ -118,7 +123,12 @@ export async function geminiGenerate(parts: unknown[], timeoutMs = 30000, opts: 
       } catch (e) {
         if (!isProviderFailure(e)) throw e;
         if (!e.retryable) throw e;
-        if (explicit && attempt === 0) continue;
+        if (explicit) {
+          const worthRetrying =
+            (typeof e.providerStatus === "number" && e.providerStatus >= 500) ||
+            e.providerStatus === "timeout";
+          if (attempt === 0 && worthRetrying) continue;
+        }
         tried.push(`${model} (${e.providerStatus})`);
         break;
       }
@@ -142,7 +152,7 @@ export async function geminiGenerate(parts: unknown[], timeoutMs = 30000, opts: 
  * include TEXT as well as IMAGE: image-only requests are unreliable
  * (sometimes refused) on this endpoint.
  */
-export async function geminiGenerateImage(parts: unknown[], timeoutMs = 30000): Promise<{ text?: string; imageData?: string; imageMime?: string }> {
+export async function geminiGenerateImage(parts: unknown[], timeoutMs = 20000): Promise<{ text?: string; imageData?: string; imageMime?: string }> {
   return geminiGenerate(parts, timeoutMs, {
     model: geminiImageModel,
     generationConfig: { responseModalities: ["TEXT", "IMAGE"] },

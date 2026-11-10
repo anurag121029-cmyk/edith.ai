@@ -86,11 +86,22 @@ describe("model fallback chain (chat/stream/vision)", () => {
     const fetchImpl = vi.fn().mockResolvedValue(errReply(503));
     vi.stubGlobal("fetch", fetchImpl);
     await expect(geminiGenerateImage([{ text: "Generate an image: a cat" }])).rejects.toThrow(/gemini-2\.5-flash-image/);
-    // One retry on the same image model only — no text-model calls.
+    // One retry on the same image model on 5xx only — no text-model calls.
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     for (const call of fetchImpl.mock.calls) {
       expect(call[0] as string).toContain("gemini-2.5-flash-image:generateContent");
     }
+  });
+
+  it("image generation does not waste a retry on a 429 quota error", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchImpl = vi.fn().mockResolvedValue(errReply(429));
+    vi.stubGlobal("fetch", fetchImpl);
+    await expect(geminiGenerateImage([{ text: "Generate an image: a cat" }])).rejects.toThrow(/429/);
+    // A 429 is a quota error (the image quota on the current key is 0),
+    // so a retry seconds later cannot succeed — fail fast, once.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0] as string).toContain("gemini-2.5-flash-image:generateContent");
   });
 
   it("streaming falls back to the next model on a 503 before any chunk", async () => {

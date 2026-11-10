@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AppShell, Glass, EmptyState } from "@/components/ui";
 import { useUser } from "@/lib/useUser";
 import { workloadSummary } from "@/lib/logic";
@@ -14,6 +15,9 @@ export default function Page(){
   async function del(id:string){ if(!sb) return; await sb.from("workload_entries").delete().eq("id",id); load(); }
   const s=workloadSummary(rows);
   return <AppShell title="Workload analyzer"><Glass>
+    <p style={{ marginTop: 0 }}><strong>Automatic report:</strong> EDITH also works your workload out by itself from your tasks, study sessions, chats and mood check-ins — no typing needed. See it on your dashboard. <Link href="/dashboard">View the automatic workload report →</Link></p>
+    <p className="muted" style={{ fontSize: ".85rem" }}>The log below is optional — add entries by hand if you want them counted as one more source in the automatic report.</p>
+  </Glass><div style={{ marginTop: "1rem" }}><Glass>
     <form onSubmit={add} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:".5rem"}}>
       <input className="input" aria-label="Entry title" placeholder="e.g. Essay drafting" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} required />
       <input className="input" aria-label="Hours" type="number" step="0.5" min={0} max={24} value={form.hours} onChange={e=>setForm({...form,hours:Number(e.target.value)})} />
@@ -24,5 +28,5 @@ export default function Page(){
     {err&&<p className="error" role="alert">{err}</p>}
     {rows.length? <><p><strong>Summary:</strong> {s.totalHours}h total · average intensity {s.avgIntensity}/10 · level <strong>{s.level}</strong>. Break suggestion: {s.level==="high"?"Take a real break today and defer anything non-urgent.":s.level==="moderate"?"Schedule short breaks between blocks.":"Your logged load looks manageable."}</p>
     <ul>{rows.map(r=><li key={r.id}>{r.title} — {r.hours}h, intensity {r.intensity}/10 <button className="btn btn-danger" onClick={()=>del(r.id)}>Delete</button></li>)}</ul></> : <EmptyState text="No workload entries yet — log your first above." />}
-  </Glass></AppShell>;
+  </Glass></div></AppShell>;
 }

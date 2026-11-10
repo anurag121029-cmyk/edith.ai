@@ -18,6 +18,23 @@ type StressApi = {
   disclaimer: string;
 };
 
+type WorkloadApi = {
+  score: number | null;
+  level: string;
+  sources: { key: string; label: string; weight: number; value: number | null; detail: string; missing: boolean }[];
+  missing: string[];
+  confidence: number;
+  daily: { date: string; score: number; tasksCreated: number; tasksCompleted: number; studyMinutes: number; messages: number }[];
+  busiestDay: string | null;
+  trend: { direction: "up" | "down" | "flat"; delta: number; thisWeekAvg: number; prevWeekAvg: number };
+  signals: string[];
+  report: string;
+  reportSource: "gemini" | "template" | "none";
+  generatedAt: string;
+  windowLabel: string;
+  disclaimer: string;
+};
+
 const LEVEL_COLOR: Record<string, string> = {
   Low: "#22c55e",
   Moderate: "#eab308",
@@ -31,6 +48,20 @@ export default function Page() {
   const [data, setData] = useState<{ tasks: TaskLike[]; convs: { id: string; title: string }[]; mood: { mood_score: number; stress_score: number; created_at: string }[]; workload: { hours: number; intensity: number; created_at: string }[] } | null>(null);
   const [stress, setStress] = useState<StressApi | null>(null);
   const [stressErr, setStressErr] = useState("");
+  const [workload, setWorkload] = useState<WorkloadApi | null>(null);
+  const [workloadErr, setWorkloadErr] = useState("");
+  const [workloadRefreshing, setWorkloadRefreshing] = useState(false);
+  async function loadWorkload() {
+    setWorkloadRefreshing(true);
+    try {
+      const res = await fetch("/api/workload");
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Workload report failed");
+      setWorkload(d as WorkloadApi);
+      setWorkloadErr("");
+    } catch (e) { setWorkloadErr((e as Error).message); }
+    finally { setWorkloadRefreshing(false); }
+  }
   const [err, setErr] = useState("");
   useEffect(() => {
     if (!user || !sb) return;
@@ -47,6 +78,7 @@ export default function Page() {
         setStress(d as StressApi);
       } catch (e) { setStressErr((e as Error).message); }
     })();
+    loadWorkload();
   }, [user, sb]);
   const today = new Date().toISOString().slice(0, 10);
   const color = stress ? LEVEL_COLOR[stress.level] || "#6b7280" : "#6b7280";
@@ -131,6 +163,91 @@ export default function Page() {
             <Link className="btn btn-secondary" href="/workload">Log workload →</Link>
             <Link className="btn btn-secondary" href="/tasks">Tasks (supporting) →</Link>
             <Link className="btn btn-secondary" href="/study">Study (supporting) →</Link>
+          </p>
+        </Glass>
+
+        {/* Workload report — calculated by the app itself from your activity. */}
+        <Glass>
+          <h2 style={{ marginTop: 0 }}>Your workload this week — worked out by the app</h2>
+          <p className="muted" style={{ fontSize: ".9rem" }}>
+            No typing needed: this is calculated automatically from your tasks, study sessions, chats and mood check-ins in the last 7 days.
+          </p>
+          {workloadErr && <p className="error" role="alert">{workloadErr}</p>}
+          {!workload && !workloadErr && <p className="muted">Calculating your workload report…</p>}
+          {workload && workload.score === null && (
+            <EmptyState text="No activity yet — chat, log tasks or study, and your first workload report will appear here." />
+          )}
+          {workload && workload.score !== null && (
+            <>
+              <div style={{ display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ textAlign: "center", minWidth: 140 }}>
+                  <div style={{ fontSize: "3.2rem", fontWeight: 800, lineHeight: 1, color: LEVEL_COLOR[workload.level] || "#6b7280" }}>{workload.score}<span style={{ fontSize: "1.2rem", color: "var(--text-muted)" }}>/100</span></div>
+                  <p style={{ margin: ".3rem 0 0", fontWeight: 700, color: LEVEL_COLOR[workload.level] || "#6b7280" }}>{workload.level} workload</p>
+                  <p className="muted" style={{ fontSize: ".85rem", margin: ".3rem 0 0" }}>
+                    {workload.trend.direction === "flat"
+                      ? "About the same as last week"
+                      : workload.trend.direction === "up"
+                        ? `↑ ${Math.abs(workload.trend.delta)} points busier than last week`
+                        : `↓ ${Math.abs(workload.trend.delta)} points quieter than last week`}
+                    {workload.busiestDay ? ` · busiest day ${workload.busiestDay}` : ""}
+                  </p>
+                </div>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div aria-label={`Workload score ${workload.score} out of 100, ${workload.level}`} role="img" style={{ height: 18, borderRadius: 999, background: "rgba(127,127,127,.25)", overflow: "hidden" }}>
+                    <div style={{ width: `${workload.score}%`, height: "100%", background: LEVEL_COLOR[workload.level] || "#6b7280", borderRadius: 999 }} />
+                  </div>
+                  <p className="muted" style={{ fontSize: ".85rem", marginTop: ".5rem" }}>
+                    Based on {workload.sources.filter((f) => !f.missing).length} of {workload.sources.length} sources in the last 7 days
+                    {workload.missing.length ? ` — missing: ${workload.missing.join(", ")}` : ""}. {workload.disclaimer}
+                  </p>
+                </div>
+              </div>
+
+              <h3>What is driving it</h3>
+              <ul style={{ listStyle: "none", padding: 0 }}>
+                {workload.sources.map((f) => (
+                  <li key={f.key} style={{ marginTop: ".5rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: ".5rem", flexWrap: "wrap" }}>
+                      <strong>{f.label}</strong>
+                      <span className="muted">{f.missing ? "no data" : `${f.value}/100 · weight ${f.weight}%`}</span>
+                    </div>
+                    {!f.missing && f.value !== null && (
+                      <div aria-hidden="true" style={{ height: 8, borderRadius: 999, background: "rgba(127,127,127,.25)", overflow: "hidden", marginTop: ".2rem" }}>
+                        <div style={{ width: `${f.value}%`, height: "100%", background: LEVEL_COLOR[workload.level] || "#6b7280" }} />
+                      </div>
+                    )}
+                    <p className="muted" style={{ fontSize: ".85rem", margin: ".2rem 0 0" }}>{f.detail}</p>
+                  </li>
+                ))}
+              </ul>
+
+              <h3>Last 7 days</h3>
+              <div style={{ display: "flex", gap: ".4rem", alignItems: "flex-end", height: 90 }} aria-label="Daily workload scores for the last 7 days">
+                {workload.daily.map((d) => (
+                  <div key={d.date} style={{ flex: 1, textAlign: "center" }}>
+                    <div title={`${d.date}: score ${d.score} — ${d.tasksCreated + d.tasksCompleted} tasks, ${d.studyMinutes} study minutes, ${d.messages} messages`} style={{ height: Math.max(4, d.score * 0.8), background: d.score === 0 ? "rgba(127,127,127,.3)" : LEVEL_COLOR[workload.level] || "#6b7280", borderRadius: 4, margin: "0 auto" }} />
+                    <div className="muted" style={{ fontSize: ".7rem", marginTop: ".2rem" }}>{d.date.slice(5)}</div>
+                  </div>
+                ))}
+              </div>
+
+              {workload.signals.length > 0 && (
+                <p style={{ marginTop: "1rem" }}><strong>Top signals:</strong> {workload.signals.join(" · ")}.</p>
+              )}
+
+              {workload.report && (
+                <p style={{ marginTop: "1rem" }}><strong>Report{workload.reportSource === "gemini" ? " (AI)" : workload.reportSource === "template" ? " (from your activity)" : ""}:</strong> {workload.report}</p>
+              )}
+              <p className="muted" style={{ fontSize: ".85rem" }}>
+                {workload.windowLabel}. Generated {workload.generatedAt ? new Date(workload.generatedAt).toLocaleString() : "just now"}.
+              </p>
+            </>
+          )}
+          <p style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+            <button className="btn btn-secondary" onClick={loadWorkload} disabled={workloadRefreshing}>{workloadRefreshing ? "Refreshing…" : "↻ Refresh report"}</button>
+            <Link className="btn btn-secondary" href="/workload">Workload log →</Link>
+            <Link className="btn btn-secondary" href="/tasks">Tasks →</Link>
+            <Link className="btn btn-secondary" href="/study">Study →</Link>
           </p>
         </Glass>
 

@@ -166,6 +166,47 @@ export default function Page() {
           </p>
         </Glass>
 
+        {/* Today — what to start, where, and when (from the Tasks planner). */}
+        <Glass>
+          <h2 style={{ marginTop: 0 }}>Today — what to start, where, and when</h2>
+          {(() => {
+            type TodayTask = TaskLike & { start_time?: string | null; planned_minutes?: number | null; place?: string | null; reminder_at?: string | null };
+            const list = (data?.tasks || []) as TodayTask[];
+            const todays = list.filter((t) => t.status !== "done" && ((t.due_date && t.due_date.slice(0, 10) === today) || (t.start_time && t.start_time.slice(0, 10) === today)));
+            const dueReminders = list.filter((t) => t.status !== "done" && t.reminder_at && Date.parse(t.reminder_at) <= Date.now() + 24 * 60 * 60 * 1000);
+            if (!todays.length && !dueReminders.length) return <EmptyState text="Nothing planned for today — add a task with a start time, place and reminder on the Tasks page." />;
+            return (<>
+              {todays.length > 0 && (<>
+                <h3 style={{ marginTop: 0 }}>Today's tasks</h3>
+                <ul style={{ listStyle: "none", padding: 0 }}>
+                  {todays.map((t, i) => (
+                    <li key={i} style={{ marginBottom: ".5rem" }}>
+                      <strong>{(t as { title?: string }).title || "Task"}</strong>
+                      <span className="muted"> · {t.start_time ? `starts ${new Date(t.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : t.due_date ? `due today` : ""}{t.place ? ` · ${t.place}` : ""}{t.planned_minutes ? ` · ${t.planned_minutes} min planned` : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>)}
+              {dueReminders.length > 0 && (<>
+                <h3>Reminders due</h3>
+                <ul style={{ listStyle: "none", padding: 0 }}>
+                  {dueReminders.map((t, i) => (
+                    <li key={i} style={{ marginBottom: ".5rem" }}>
+                      ⏰ <strong>{(t as { title?: string }).title || "Task"}</strong>
+                      <span className="muted"> · remind at {t.reminder_at ? new Date(t.reminder_at).toLocaleString() : ""}{t.place ? ` · ${t.place}` : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="muted" style={{ fontSize: ".85rem" }}>Reminders also pop up as a browser notification while the app is open (tap “Enable task reminders” at the bottom-right of any page).</p>
+              </>)}
+            </>);
+          })()}
+          <p style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+            <Link className="btn btn-secondary" href="/tasks">Plan tasks →</Link>
+            <Link className="btn btn-secondary" href="/study">Start studying →</Link>
+          </p>
+        </Glass>
+
         {/* Workload report — calculated by the app itself from your activity. */}
         <Glass>
           <h2 style={{ marginTop: 0 }}>Your workload this week — worked out by the app</h2>

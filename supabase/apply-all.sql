@@ -183,6 +183,50 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
+-- ---------- 0004: planned task sessions (see migrations/0004_task_sessions.sql) ----------
+-- Adds start_time / planned_minutes / place / reminder_at / difficulty /
+-- stress_after / started_at / completed_at to tasks, and the task_sessions
+-- table (one row per completed run, owner-only RLS).
+alter table public.tasks
+  add column if not exists start_time timestamptz,
+  add column if not exists planned_minutes int check (planned_minutes >= 0),
+  add column if not exists place text,
+  add column if not exists reminder_at timestamptz,
+  add column if not exists difficulty int check (difficulty between 1 and 5),
+  add column if not exists stress_after int check (stress_after between 1 and 10),
+  add column if not exists started_at timestamptz,
+  add column if not exists completed_at timestamptz;
+create table if not exists public.task_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete set null,
+  topic text not null default '',
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  duration_minutes int not null default 0 check (duration_minutes >= 0),
+  difficulty int check (difficulty between 1 and 5),
+  stress_after int check (stress_after between 1 and 10),
+  notes text,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+create index if not exists idx_task_sessions_user_started on public.task_sessions(user_id, started_at desc);
+create index if not exists idx_task_sessions_task on public.task_sessions(task_id);
+drop trigger if exists set_updated_at_task_sessions on public.task_sessions;
+create trigger set_updated_at_task_sessions before update on public.task_sessions
+  for each row execute function public.set_updated_at();
+alter table public.task_sessions enable row level security;
+do $$ declare t text; begin
+  foreach t in array array['task_sessions'] loop
+    execute format('drop policy if exists %I on public.%I', t||'_select_own', t);
+    execute format('create policy %I on public.%I for select using (auth.uid() = user_id)', t||'_select_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_insert_own', t);
+    execute format('create policy %I on public.%I for insert with check (auth.uid() = user_id)', t||'_insert_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_update_own', t);
+    execute format('create policy %I on public.%I for update using (auth.uid() = user_id) with check (auth.uid() = user_id)', t||'_update_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_delete_own', t);
+    execute format('create policy %I on public.%I for delete using (auth.uid() = user_id)', t||'_delete_own', t);
+  end loop;
+end $$;
+
 -- ---------- DB health check (run manually) ----------
 -- select tablename from pg_tables where schemaname='public' order by 1;
 -- select tgname from pg_trigger where tgname='on_auth_user_created';

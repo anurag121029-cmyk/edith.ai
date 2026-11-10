@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorker from "@/components/ServiceWorker";
+import Reminders from "@/components/Reminders";
 import SiteFooter from "@/components/SiteFooter";
 export const metadata: Metadata = {
   title: "EDITH AI — Your intelligent assistant for calmer, clearer work",
@@ -28,5 +29,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     {/* Apply the saved theme before first paint (localStorage only; the
         signed-in DB theme in user_settings is applied by ThemeToggle). */}
     <script dangerouslySetInnerHTML={{ __html: "try{document.documentElement.dataset.theme=localStorage.getItem('edith-theme')==='light'?'light':'dark'}catch(e){}" }} />
-    {children}<SiteFooter /><ServiceWorker /></body></html>;
+    {children}<SiteFooter /><ServiceWorker /><Reminders /></body></html>;
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { computeStressScore, computeDailyTrend, STRESS_DISCLAIMER, type StressInputs } from "@/lib/stress";
+import { deriveMoodFromChats } from "@/lib/moodAuto";
 import { geminiGenerate } from "@/lib/gemini";
 import { chatLimiter, clientIpFromHeaders } from "@/lib/rateLimit";
 
@@ -33,12 +34,23 @@ export async function GET(req: Request) {
       sb.from("study_sessions").select("duration_minutes,created_at").order("created_at", { ascending: false }).limit(50),
       sb.from("messages").select("content,created_at").eq("role", "user").order("created_at", { ascending: false }).limit(30),
     ]);
+    const recentChatTexts = ((msgs.data || []) as { content: string }[]).map((x) => x.content);
+    // Automatic mood: when the user has logged NO manual mood check-in
+    // in the last 7 days, the stress score still works — the mood factor
+    // is filled in from the automatic reading of their recent chats
+    // (lib/moodAuto). Manual check-ins always win when they exist.
+    const manualMood = (m.data || []) as { stress_score?: number | null; created_at?: string }[];
+    const autoMood = manualMood.length ? null : deriveMoodFromChats(recentChatTexts);
+    const moodInput = autoMood
+      ? [{ stress_score: autoMood.stressScore, created_at: new Date().toISOString() }]
+      : manualMood;
+    const moodSource: "auto" | "manual" = autoMood ? "auto" : "manual";
     const input: StressInputs = {
-      mood: (m.data || []) as never,
+      mood: moodInput as never,
       workload: (w.data || []) as never,
       tasks: (t.data || []) as never,
       study: (s.data || []) as never,
-      chatTexts: ((msgs.data || []) as { content: string }[]).map((x) => x.content),
+      chatTexts: recentChatTexts,
     };
     const result = computeStressScore(input);
     const trend = computeDailyTrend(input, 7);
@@ -78,6 +90,10 @@ export async function GET(req: Request) {
       trend,
       reading,
       readingSource,
+      moodSource,
+      moodNote: moodSource === "auto"
+        ? "No manual mood check-in in the last 7 days, so the mood factor was read automatically from your recent chats."
+        : "Mood factor from your manual check-in(s) in the last 7 days.",
       disclaimer: STRESS_DISCLAIMER,
     });
   } catch (e) {

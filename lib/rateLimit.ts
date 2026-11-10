@@ -43,6 +43,7 @@ export function createRateLimiter(limit: number, windowMs: number): RateLimiter 
 export const chatLimiter = createRateLimiter(30, 60_000);
 export const visionLimiter = createRateLimiter(10, 60_000);
 export const imageLimiter = createRateLimiter(10, 60_000);
+export const moodLimiter = createRateLimiter(30, 60_000);
 
 /** Best-effort client key from headers; falls back to "anonymous". */
 export function clientIpFromHeaders(headers: Headers): string {

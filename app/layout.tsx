@@ -6,7 +6,14 @@ export const metadata: Metadata = {
   title: "EDITH AI — Your intelligent assistant for calmer, clearer work",
   description: "EDITH AI helps with studying, tasks, workload analysis and non-clinical stress check-ins — and remembers only the context you choose to save.",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon.svg" },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   openGraph: {
     title: "EDITH AI",
     description: "Your intelligent assistant for calmer, clearer work: studying, tasks, workload and non-clinical stress check-ins.",

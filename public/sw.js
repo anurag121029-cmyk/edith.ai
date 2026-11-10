@@ -1,7 +1,7 @@
 // Conservative service worker: caches only the app shell/static assets.
 // It NEVER caches /api/ responses or private/user data.
-const CACHE = "edith-v1";
-const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "edith-v2";
+const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(self.clients.claim()); });
 self.addEventListener("fetch", (e) => {

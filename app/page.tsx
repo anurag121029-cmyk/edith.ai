@@ -26,6 +26,7 @@ export default function Home() {
         <p className="hero-cta">
           <Link className="btn" href="/signup">Create your account</Link>
           <Link className="btn btn-secondary" href="/features">See what EDITH does</Link>
+          <Link className="btn btn-secondary" href="/install">Install the app</Link>
         </p>
       </section>
 

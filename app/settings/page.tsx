@@ -36,6 +36,10 @@ export default function Page(){
       <p><ThemeToggle /> <span className="muted" style={{ fontSize: ".85rem" }}>Saved to your account when signed in; otherwise kept in this browser only. Dark is the default.</span></p>
       <p><Link href="/memories">Memory controls (enable/disable, clear all) →</Link></p>
     </Glass><div style={{height:12}} />
+    <Glass><h3 style={{marginTop:0}}>Install EDITH as an app</h3>
+      <p className="muted">EDITH installs as a web app (PWA) on your phone&apos;s home screen — full-screen, with its own icon. It is not a native store app, and there is no App Store or Play Store listing.</p>
+      <p><Link href="/install">How to install EDITH on Android &amp; iPhone →</Link></p>
+    </Glass><div style={{height:12}} />
     <Glass><h3 style={{marginTop:0}}>Notifications & report delivery</h3>
       <p className="muted">Email delivery works only when a provider is configured (EMAIL_PROVIDER=resend + RESEND_API_KEY); otherwise the Insights &quot;Email this report&quot; button returns a clear &quot;not configured&quot; error and nothing is sent. Only the weekly-report summary is ever emailed, to your own signed-in address — never conversations, memories or reflections, and never to parents or third parties by default (there is no parent-report feature). Weekly reports can always be generated and downloaded as a server PDF from Insights.</p>
     </Glass><div style={{height:12}} />

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell, Glass } from "@/components/ui";
 
-type Health = { checks?: { supabaseConfigured?: boolean; geminiConfigured?: boolean; geminiModel?: string; geminiImageModel?: string; emailConfigured?: boolean; serviceRoleConfigured?: boolean } };
+type Health = { checks?: { supabaseConfigured?: boolean; geminiConfigured?: boolean; geminiModel?: string; geminiFallbackModels?: string[]; geminiImageModel?: string; emailConfigured?: boolean; serviceRoleConfigured?: boolean } };
 
 function State({ ok, label }: { ok: boolean | null; label: string }) {
   // ok === null means "capability check, not a server config check".
@@ -32,7 +32,7 @@ export default function Page() {
   const c = health?.checks || {};
   const rows: { name: string; state: React.ReactNode; note: string }[] = [
     { name: "Supabase (auth + database)", state: <State ok={c.supabaseConfigured ?? false} label="" />, note: "Config presence only. Live RLS behaviour needs a real project with two test accounts — unverified here." },
-    { name: "Gemini — chat", state: <State ok={c.geminiConfigured ?? false} label="" />, note: c.geminiConfigured ? `Key present (model: ${c.geminiModel || "default"}), but no live call has been verified in this environment.` : "GEMINI_API_KEY is missing, so /api/chat returns an honest 503." },
+    { name: "Gemini — chat", state: <State ok={c.geminiConfigured ?? false} label="" />, note: c.geminiConfigured ? `Key present (model: ${c.geminiModel || "default"}). If that model returns 404/429/5xx or times out, the server falls back to ${(c.geminiFallbackModels || ["gemini-3.6-flash", "gemini-3.5-flash-lite"]).join(", then ")} before erroring — but no live call has been verified in this environment.` : "GEMINI_API_KEY is missing, so /api/chat returns an honest 503." },
     { name: "Gemini — vision (image understanding)", state: <State ok={c.geminiConfigured ?? false} label="" />, note: "Shares the Gemini key; the model must be vision-capable. Unverified live." },
     { name: "Gemini — image generation", state: <State ok={c.geminiConfigured ?? false} label="" />, note: `Uses a separate image model (${c.geminiImageModel || "gemini-2.5-flash-image"}), not the chat model, and requests image output explicitly. A 422 now means the provider genuinely returned no image for that prompt. Unverified live.` },
     { name: "Speech recognition (browser Web Speech)", state: <State ok={null} label={speech ? (speech.stt ? "● Supported in this browser" : "○ Not supported in this browser") : "Checking…"} />, note: "Browser capability only — best in Chrome/Edge; Safari support is limited. No audio is recorded in the background." },

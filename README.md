@@ -1,7 +1,7 @@
 # EDITH AI
 
-Intelligent personal assistant for stress management, workload analysis, productivity and studying.
-Stack: **Next.js (App Router) + TypeScript + Tailwind CSS v4**, **Supabase** (Auth, Postgres, RLS), **Gemini** (server-side only). Liquid-glass UI, installable as a PWA.
+A stress-management calculator and assistant: EDITH turns the work you log, your mood check-ins and your chats into a clear, honest stress estimate — and practical steps tied to what is driving it. Tasks and study are supporting inputs, not the centre of the app.
+Stack: **Next.js (App Router) + TypeScript + Tailwind CSS v4**, **Supabase** (Auth, Postgres, RLS), **Gemini** (server-side only). Liquid-glass UI (dark by default), installable as a PWA.
 
 > Wellness content is non-clinical: EDITH reports your *self-reported* mood/stress scores. It does not diagnose any condition.
 
@@ -55,15 +55,29 @@ Without Supabase/Gemini keys the app still runs: auth/data pages show an explici
 3. iPhone/Safari: Share → **Add to Home Screen**.
 The service worker caches only the app shell/static assets — never `/api/` or private data. Offline, an explicit notice is shown; AI needs a connection.
 
-## 7. Features
-Landing, signup/login/email confirmation/password reset, onboarding (also repairs a missing profile), dashboard computed from your real records, persistent chat (rename/delete/search conversations, copy, regenerate, save-as-memory, lightweight markdown with styled maths, relevant saved memories injected into context with a UI note; replies stream from `/api/chat/stream` with a stop control and automatic fallback to `/api/chat`), study assistant + session log, task CRUD with filters/overdue, workload analyser, mood/stress check-ins, weekly reports (generated from real data, server-generated PDF download per saved report plus print → Save as PDF as fallback; email delivery via the Resend provider interface when configured, summary only; one report per user per week — regenerating updates the existing report instead of duplicating it), Remember My Context (CRUD, keyword search, enable/disable, clear all, secret-blocking), vision Q&A, image generation (separate image model `GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`, with image output requested explicitly; a 422 now means the provider genuinely returned no image for that prompt), voice (browser Web Speech API), settings with a dark/light theme toggle (persisted to `user_settings.theme` when signed in, localStorage otherwise) and metadata-only JSON data export (full message bodies only with explicit opt-in) and account deletion, `/api/health`, authenticated `/integrations` status panel, plus public site pages (`/features`, `/privacy`, `/terms`), a site footer, 404/loading/error pages, and `sitemap.xml`/`robots.txt` covering public routes only.
+## 7. Stress calculator — the main goal
+
+`GET /api/stress` (signed in, owner-only via RLS) returns a deterministic 0–100 stress estimate from the user's own last-7-days data, computed in `lib/stress.ts`. The dashboard is built around it: score gauge, factor breakdown, 7-day trend, and 2–3 practical suggestions tied to the top factors. Tasks and study stay as supporting pages linked from the dashboard.
+
+| Factor | Weight | Value (0–100) |
+|---|---|---|
+| Self-reported stress | 30% | avg stress_score (1–10) × 10 |
+| Workload | 25% | 0.6 × avg intensity × 10 + 0.4 × min(total hours, 60)/60 × 100 |
+| Task pressure | 20% | min(100, overdue×20 + due-soon high-priority×10 + open×2) |
+| Study load | 10% | min(100, study minutes / 2520 × 100) |
+| Chat mood (keywords) | 15% | 50 + 10 × (stress words − calm words), clamped 0–100 |
+
+Levels: 0–29 Low, 30–49 Moderate, 50–69 High, 70–100 Very high. Missing factors are excluded and the remaining weights are renormalised — the score is never built from invented data, and with no data at all it returns no score. The route also returns a short mood reading: from Gemini when configured (labelled "gemini"), otherwise a keyword-based reading (labelled "keyword"). **The score is an estimate from self-reported data — it is explicitly NOT a medical diagnosis or clinical assessment, and every surface that shows it says so.**
+
+## 8. Features
+The dashboard is the stress score; landing, signup/login/email confirmation/password reset, onboarding (also repairs a missing profile), persistent chat (rename/delete/search conversations, copy, regenerate, save-as-memory, lightweight markdown with styled maths, relevant saved memories injected into context with a UI note; replies stream from `/api/chat/stream` with a stop control and automatic fallback to `/api/chat`), study assistant + session log, task CRUD with filters/overdue, workload analyser, mood/stress check-ins, weekly reports (generated from real data, server-generated PDF download per saved report plus print → Save as PDF as fallback; email delivery via the Resend provider interface when configured, summary only; one report per user per week — regenerating updates the existing report instead of duplicating it), Remember My Context (CRUD, keyword search, enable/disable, clear all, secret-blocking), vision Q&A, image generation (separate image model `GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`, with image output requested explicitly; a 422 now means the provider genuinely returned no image for that prompt), voice (browser Web Speech API), settings with a dark/light theme toggle (persisted to `user_settings.theme` when signed in, localStorage otherwise) and metadata-only JSON data export (full message bodies only with explicit opt-in) and account deletion, `/api/health`, authenticated `/integrations` status panel, plus public site pages (`/features`, `/privacy`, `/terms`), a site footer, 404/loading/error pages, and `sitemap.xml`/`robots.txt` covering public routes only.
 
 API rate limits (per IP, per 60 seconds, in-memory; a `429` response includes a `Retry-After` header): `/api/chat` 30/min, `/api/vision` and `/api/image` 10/min each. Limits do not store any user content.
 
 ## Refreshed design (visual-only refresh, no data/API changes)
 The design system was refreshed in `app/globals.css` (deeper liquid-glass panels with subtler borders and softer gradients, a clearer spacing scale, larger/bolder heading hierarchy, refined primary/secondary/danger buttons with hover/focus/disabled states, higher-contrast muted text, badges, notices and a shared empty-state pattern), the landing page now has a clearer hero with signup/features CTAs, a "How it works" strip and a feature grid linking to real pages (no invented statistics, testimonials, user counts or pricing), and the app shell has a polished sidebar with an active-page state plus a mobile bottom nav with icons, labels and safe-area padding. The chat layout now stacks on small screens instead of overflowing. No routes were renamed, and no Supabase schema, auth flow, API behaviour, rate limit or business logic was changed in this refresh.
 
-## 8. Known limitations
+## 9. Known limitations
 - Email report delivery works only when a provider is configured (`EMAIL_PROVIDER=resend` + `RESEND_API_KEY`); without them the app returns a clear "not configured" error and claims no delivery. Sending to parents/third parties is intentionally not a feature.
 - PDF export: saved reports download as a real server-generated PDF (`/api/report-pdf`, owner-only); browser print → "Save as PDF" remains the fallback if that route fails.
 - Image generation uses its own model (`GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`) with `responseModalities: ["TEXT","IMAGE"]` requested explicitly. The old bug — `/api/image` calling the text-only chat model (`gemini-3.8-flash`) with no image-output request, so it could never return image data — is fixed; a 422 now only means the provider genuinely returned no image for that prompt. Note: `gemini-2.5-flash-image` is deprecated with a March 15, 2027 shutdown; it is still served.
@@ -72,7 +86,7 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 - Native iOS/Android apps are not included; the PWA is the mobile route. Capacitor could wrap this codebase later.
 - RLS/integration behaviour can only be fully verified against a live Supabase project with two test accounts.
 
-## 9. Spec checklist — honest status against the full EDITH spec
+## 10. Spec checklist — honest status against the full EDITH spec
 
 ### Completed (implemented and unit/build-verified in this workspace)
 - Auth: signup, signin, signout, email verification, password reset, session persistence, protected routes, profile management, onboarding (display name, role, schedule, goals, communication style, stress preferences — sensitive questions optional).
@@ -84,7 +98,7 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 - Voice: browser Web Speech input + spoken replies, with typed fallback and permission errors.
 - Vision: upload validation (type/size), Gemini vision Q&A; uploads are **not stored**.
 - Image generation: real Gemini route on a separate image model (`GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`) with image output requested explicitly; returns an image when the provider returns one, otherwise an honest 422 — no placeholders. (Previously it called the text-only chat model, so it could never return an image — fixed.)
-- Dashboard computed from real records with empty states (no fake charts or hardcoded stats).
+- Dashboard computed from real records with empty states (no fake charts or hardcoded stats). **The dashboard is now built around the stress calculator** (`GET /api/stress`, `lib/stress.ts`): a transparent 0–100 estimate from the user's own last-7-days data (self-reported stress 30%, workload 25%, task pressure 20%, study load 10%, chat-mood keywords 15%), with factor breakdown, 7-day trend, and suggestions tied to the top factors; missing inputs are excluded and renormalised, never invented; labelled everywhere as an estimate, not a diagnosis. The mood reading is from Gemini when configured (labelled) or a keyword fallback (labelled).
 - Weekly reports: generated from real data, one per user per week (upsert + unique index, migration 0002), server-generated PDF download (owner-only, pdf-lib) plus print → Save as PDF fallback, and a Resend provider interface for emailing the summary only (honest "not configured" error when unset).
 - Chat streaming: `/api/chat/stream` (same validation, rate limit, history/memory caps as `/api/chat`), visible streaming indicator, stop control, automatic fallback to `/api/chat`, final reply saved as one message.
 - Light mode: dark/light toggle in the sidebar and Settings, persisted to `user_settings.theme` when signed in (migration 0003) and to localStorage otherwise; dark remains the default.

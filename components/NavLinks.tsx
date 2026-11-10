@@ -3,12 +3,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export const NAV = [
-  ["/dashboard", "Dashboard", "▦"],
+  ["/dashboard", "Stress", "♥"],
   ["/chat", "Chat", "💬"],
   ["/study", "Study", "📚"],
   ["/tasks", "Tasks", "✓"],
   ["/workload", "Workload", "📊"],
-  ["/mood", "Mood", "♥"],
+  ["/mood", "Stress & mood", "♥"],
   ["/insights", "Insights", "📈"],
   ["/memories", "Memories", "🧠"],
   ["/image", "Image", "🖼"],

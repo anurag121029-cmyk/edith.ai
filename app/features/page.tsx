@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Glass } from "@/components/ui";
 const FEATURES: [string, string][] = [
+  ["Stress calculator", "The main goal of EDITH: a transparent 0–100 stress estimate (GET /api/stress) from your own last-7-days data — self-reported stress, workload, task pressure, study load and chat mood keywords — with a factor breakdown, 7-day trend and practical, non-clinical suggestions. Missing inputs are excluded, never invented. Labelled everywhere as an estimate, not a diagnosis."],
   ["AI assistant & chat", "Persistent conversations with study, maths and coding help, powered server-side by Gemini. AI routes are rate-limited and return honest errors when unconfigured."],
-  ["Study assistant", "Step-by-step explanations, practice questions and a logged study session history."],
-  ["Task manager", "Full task CRUD with due dates, priorities, categories, filters and overdue tracking."],
+  ["Study assistant", "Step-by-step explanations, practice questions and a logged study session history. Study is a supporting input to the stress score."],
+  ["Task manager", "Full task CRUD with due dates, priorities, categories, filters and overdue tracking. Tasks are a supporting input to the stress score, not the centre of EDITH."],
   ["Workload analyser", "Workload entries with hours and intensity, plus trend summaries and break suggestions."],
   ["Mood & stress check-ins", "Optional self-reported mood and stress scores with trends. These are wellness summaries, not diagnoses."],
   ["Weekly insights & reports", "One report per user per week, generated from your real tasks, study, workload and mood data, printable as PDF via your browser."],

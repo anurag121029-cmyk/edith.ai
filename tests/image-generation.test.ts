@@ -37,7 +37,7 @@ function pollinationsErrReply(status: number) {
   return { ok: false, status, headers: { get: () => null }, arrayBuffer: async () => new ArrayBuffer(0) };
 }
 
-describe("image generation fallback (Gemini first, Pollinations second)", () => {
+describe("image generation race (Gemini vs Pollinations, first image wins)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -70,10 +70,13 @@ describe("image generation fallback (Gemini first, Pollinations second)", () => 
     expect(pollinationsCalls[0][0] as string).toBe("https://image.pollinations.ai/prompt/a%20red%20cat?nologo=true");
   });
 
-  it("Gemini success → Pollinations is never called and source is 'gemini'", async () => {
+  it("Gemini success → its image wins the race and source is 'gemini'", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
+    // Pollinations is delayed 10ms so Gemini's immediate answer wins;
+    // in the real world the winner is whichever provider answers first.
+    const delayed = (v: unknown, ms: number) => new Promise((r) => setTimeout(() => r(v), ms));
     const fetchImpl = vi.fn((url: string) => {
-      if (url.includes("pollinations")) return Promise.resolve(pollinationsReply());
+      if (url.includes("pollinations")) return delayed(pollinationsReply(), 10);
       return Promise.resolve(geminiImageReply());
     });
     vi.stubGlobal("fetch", fetchImpl);
@@ -81,8 +84,34 @@ describe("image generation fallback (Gemini first, Pollinations second)", () => 
     expect(out.source).toBe("gemini");
     expect(out.imageData).toBe("iVBOR");
     expect(out.imageMime).toBe("image/png");
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0][0] as string).toContain("gemini-2.5-flash-image:generateContent");
+    // Both providers start in parallel (the race), so both are called;
+    // Gemini's immediate answer wins and Pollinations' is discarded.
+    expect(fetchImpl.mock.calls.filter((c) => (c[0] as string).includes("generativelanguage"))).toHaveLength(1);
+    expect(fetchImpl.mock.calls.filter((c) => (c[0] as string).includes("pollinations"))).toHaveLength(1);
+  });
+
+  it("the race: a slow Gemini loses to a fast Pollinations, and vice versa", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const delayed = (v: unknown, ms: number) => new Promise((r) => setTimeout(() => r(v), ms));
+    // Slow Gemini (30ms), fast Pollinations (5ms) → pollinations wins.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("pollinations")) return delayed(pollinationsReply(), 5);
+        return delayed(geminiImageReply(), 30);
+      }),
+    );
+    await expect(generateImage("a red cat")).resolves.toMatchObject({ source: "pollinations" });
+
+    // Fast Gemini (5ms), slow Pollinations (30ms) → gemini wins.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("pollinations")) return delayed(pollinationsReply(), 30);
+        return delayed(geminiImageReply(), 5);
+      }),
+    );
+    await expect(generateImage("a red cat")).resolves.toMatchObject({ source: "gemini" });
   });
 
   it("Gemini returns text only (no image data) → Pollinations is used", async () => {

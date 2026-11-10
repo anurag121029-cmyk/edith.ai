@@ -1,15 +1,21 @@
 /**
  * Image generation with a working fallback.
  *
- * Gemini is tried FIRST (better quality when its quota exists). But the
- * current Gemini key's Google project has ZERO free-tier quota for image
+ * Gemini is tried for quality when its quota exists. But the current
+ * Gemini key's Google project has ZERO free-tier quota for image
  * generation — gemini-2.5-flash-image and gemini-3-pro-image-preview both
  * answer 429 "Quota exceeded ... limit: 0" — so on this key Gemini images
  * can never succeed until billing is enabled on that Google project. No
- * code change can give Gemini image quota, so when Gemini fails (429,
- * 5xx, timeout, or no image data) the free Pollinations service is used
- * instead: no key, no account, the image bytes are fetched server-side
- * and returned as base64 exactly like a Gemini image.
+ * code change can give Gemini image quota, so the free Pollinations
+ * service is used as well: no key, no account, the image bytes are
+ * fetched server-side and returned as base64 exactly like a Gemini image.
+ *
+ * SPEED: the two providers are RACED, not run one after the other.
+ * Gemini's quota error can take ~20s to arrive, so waiting for it first
+ * made every image take ~30s. Now both start at once and the first
+ * image that comes back wins — typically the Pollinations one in a few
+ * seconds while Gemini quota is 0, or the Gemini one when its quota
+ * exists and it answers fast. The loser is simply discarded.
  *
  * The response always says which provider produced the image
  * ("gemini" | "pollinations"), and the image page labels a fallback
@@ -19,11 +25,13 @@
 import { geminiGenerateImage } from "./gemini";
 import { geminiImageModel } from "./config";
 
-/** Gemini image calls get 20s, so a slow quota error does not eat the
- *  whole budget before the fallback runs. */
+/** Gemini image calls get 20s, so a slow quota error does not hold up
+ *  the race for long. Pollinations fetch budget is the same. Worst case
+ *  for one image call is now roughly 20s (both racing) plus overhead —
+ *  typically just the few seconds the faster provider needs. */
 export const GEMINI_IMAGE_TIMEOUT_MS = 20000;
-/** Pollinations fetch budget. Worst case for one image call is roughly
- *  20s (Gemini) + 20s (Pollinations) plus overhead. */
+/** Pollinations fetch budget (races Gemini, so this is a cap, not an
+ *  addition to the Gemini time). */
 export const POLLINATIONS_TIMEOUT_MS = 20000;
 
 export const POLLINATIONS_BASE_URL = "https://image.pollinations.ai/prompt";
@@ -63,9 +71,10 @@ export async function fetchPollinationsImage(
 }
 
 /**
- * Generate an image for a prompt: Gemini first, Pollinations fallback.
- * Returns the image bytes (base64), its mime type, and which provider
- * produced it. Throws with status 422 only when both providers fail.
+ * Generate an image for a prompt: Gemini and Pollinations RACE — both
+ * start at once and the first image back wins. Returns the image bytes
+ * (base64), its mime type, and which provider produced it. Throws with
+ * status 422 only when both providers fail.
  */
 export async function generateImage(prompt: string): Promise<{
   imageData: string;
@@ -73,24 +82,37 @@ export async function generateImage(prompt: string): Promise<{
   source: ImageSource;
 }> {
   let geminiError = "";
-  try {
-    const out = await geminiGenerateImage(
-      [{ text: `Generate an image: ${prompt}` }],
-      GEMINI_IMAGE_TIMEOUT_MS,
-    );
-    if (out.imageData) {
-      return { imageData: out.imageData, imageMime: out.imageMime || "image/png", source: "gemini" };
+  let fallbackError = "";
+  const geminiAttempt = (async () => {
+    try {
+      const out = await geminiGenerateImage(
+        [{ text: `Generate an image: ${prompt}` }],
+        GEMINI_IMAGE_TIMEOUT_MS,
+      );
+      if (out.imageData) {
+        return { imageData: out.imageData, imageMime: out.imageMime || "image/png", source: "gemini" as const };
+      }
+      throw new Error("returned no image data");
+    } catch (e) {
+      geminiError = (e as Error).message || "failed";
+      throw e;
     }
-    geminiError = "returned no image data";
-  } catch (e) {
-    geminiError = (e as Error).message || "failed";
-  }
-
+  })();
+  const pollinationsAttempt = (async () => {
+    try {
+      const out = await fetchPollinationsImage(prompt);
+      return { ...out, source: "pollinations" as const };
+    } catch (e) {
+      fallbackError = (e as Error).message || "failed";
+      throw e;
+    }
+  })();
   try {
-    const out = await fetchPollinationsImage(prompt);
-    return { ...out, source: "pollinations" };
-  } catch (e) {
-    const fallbackError = (e as Error).message || "failed";
+    // First image back wins; the loser is discarded (its 20s timeout
+    // bounds the wasted work). Promise.any ignores the loser's rejection
+    // when the other succeeds.
+    return await Promise.any([geminiAttempt, pollinationsAttempt]);
+  } catch {
     const quota = geminiError.includes("429");
     const geminiPart = quota
       ? `Gemini (${geminiImageModel}) has no image quota on this key — the provider returned 429 with a quota limit of 0`

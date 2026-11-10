@@ -2,6 +2,50 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { parseTheme, themeFromStorage } from "../lib/theme";
 import { sanitizeForPdf, wrapText } from "../lib/pdf";
 import { memoryContextBlock } from "../lib/chatContext";
+import { geminiGenerate, geminiGenerateImage } from "../lib/gemini";
+import { geminiImageModel } from "../lib/config";
+
+describe("image generation model", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+  it("defaults to an image-capable model, not the chat model", () => {
+    expect(geminiImageModel).toBe("gemini-2.5-flash-image");
+    expect(geminiImageModel).not.toBe("gemini-2.0-flash");
+  });
+  it("calls the image model and requests TEXT+IMAGE output", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "done" }, { inlineData: { mimeType: "image/png", data: "iVBOR" } }] } }],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    const out = await geminiGenerateImage([{ text: "Generate an image: a cat" }]);
+    expect(out.imageData).toBe("iVBOR");
+    expect(out.imageMime).toBe("image/png");
+    const url = fetchImpl.mock.calls[0][0] as string;
+    expect(url).toContain("gemini-2.5-flash-image:generateContent");
+    expect(url).not.toContain("gemini-2.0-flash");
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
+    expect(body.generationConfig).toEqual({ responseModalities: ["TEXT", "IMAGE"] });
+  });
+  it("geminiGenerate with no options still uses the chat model and sends no generationConfig", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: "hi" }] } }] }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    const out = await geminiGenerate([{ text: "hello" }]);
+    expect(out.text).toBe("hi");
+    expect((fetchImpl.mock.calls[0][0] as string)).toContain("gemini-2.0-flash:generateContent");
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
+    expect(body.generationConfig).toBeUndefined();
+  });
+});
 import {
   sendWeeklyReportEmail,
   emailNotConfiguredError,

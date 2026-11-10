@@ -25,7 +25,7 @@ export default function Page(){
     </Glass><div style={{height:12}} />
     <Glass><h3 style={{marginTop:0}}>Generate an image</h3>
       <form onSubmit={generate}><label htmlFor="p">Prompt</label><input id="p" className="input" value={prompt} onChange={e=>setPrompt(e.target.value)} required maxLength={1000} /><p><button className="btn" disabled={busy}>Generate</button></p></form>
-      <p className="muted" style={{fontSize:".85rem"}}>Generation only succeeds if the configured Gemini model returns image data; otherwise you&apos;ll see the exact provider/model error — no placeholder is faked.</p>
+      <p className="muted" style={{fontSize:".85rem"}}>Generation uses the separate image model (GEMINI_IMAGE_MODEL, default gemini-2.5-flash-image) and requests image output explicitly. A 422 now means the provider genuinely returned no image for that prompt — no placeholder is faked.</p>
       {img&&<img src={img} alt={`Generated: ${prompt}`} style={{maxWidth:"100%",borderRadius:16}} />}
     </Glass>
     {err&&<p className="error" role="alert">{err}</p>}

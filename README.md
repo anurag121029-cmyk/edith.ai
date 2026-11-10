@@ -19,7 +19,8 @@ Copy `.env.example` to `.env.local` and fill in real values (never commit `.env.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API | Public, protected by RLS |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API | **Server only, optional** — enables account deletion |
 | `GEMINI_API_KEY` | Google AI Studio | **Server only** |
-| `GEMINI_MODEL` | e.g. `gemini-2.0-flash` | Must support the feature you use; image generation needs an image-capable model |
+| `GEMINI_MODEL` | e.g. `gemini-2.0-flash` | Chat, streaming and vision — must be a text/multimodal model |
+| `GEMINI_IMAGE_MODEL` | e.g. `gemini-2.5-flash-image` | **Separate image model** for `/api/image` (default `gemini-2.5-flash-image`, "Nano Banana"). Do NOT set this to the chat model — `gemini-2.0-flash` returns text only, so image generation can never work with it. The image route requests `responseModalities: ["TEXT","IMAGE"]` explicitly. |
 | `NEXT_PUBLIC_APP_URL` | e.g. `http://localhost:3000` | Used for auth email redirects |
 | `EMAIL_PROVIDER` | optional | Leave blank: email report delivery is shown as unavailable in the app |
 
@@ -55,7 +56,7 @@ Without Supabase/Gemini keys the app still runs: auth/data pages show an explici
 The service worker caches only the app shell/static assets — never `/api/` or private data. Offline, an explicit notice is shown; AI needs a connection.
 
 ## 7. Features
-Landing, signup/login/email confirmation/password reset, onboarding (also repairs a missing profile), dashboard computed from your real records, persistent chat (rename/delete/search conversations, copy, regenerate, save-as-memory, lightweight markdown with styled maths, relevant saved memories injected into context with a UI note; replies stream from `/api/chat/stream` with a stop control and automatic fallback to `/api/chat`), study assistant + session log, task CRUD with filters/overdue, workload analyser, mood/stress check-ins, weekly reports (generated from real data, server-generated PDF download per saved report plus print → Save as PDF as fallback; email delivery via the Resend provider interface when configured, summary only; one report per user per week — regenerating updates the existing report instead of duplicating it), Remember My Context (CRUD, keyword search, enable/disable, clear all, secret-blocking), vision Q&A, image generation (only when the configured model returns image data), voice (browser Web Speech API), settings with a dark/light theme toggle (persisted to `user_settings.theme` when signed in, localStorage otherwise) and metadata-only JSON data export (full message bodies only with explicit opt-in) and account deletion, `/api/health`, authenticated `/integrations` status panel, plus public site pages (`/features`, `/privacy`, `/terms`), a site footer, 404/loading/error pages, and `sitemap.xml`/`robots.txt` covering public routes only.
+Landing, signup/login/email confirmation/password reset, onboarding (also repairs a missing profile), dashboard computed from your real records, persistent chat (rename/delete/search conversations, copy, regenerate, save-as-memory, lightweight markdown with styled maths, relevant saved memories injected into context with a UI note; replies stream from `/api/chat/stream` with a stop control and automatic fallback to `/api/chat`), study assistant + session log, task CRUD with filters/overdue, workload analyser, mood/stress check-ins, weekly reports (generated from real data, server-generated PDF download per saved report plus print → Save as PDF as fallback; email delivery via the Resend provider interface when configured, summary only; one report per user per week — regenerating updates the existing report instead of duplicating it), Remember My Context (CRUD, keyword search, enable/disable, clear all, secret-blocking), vision Q&A, image generation (separate image model `GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`, with image output requested explicitly; a 422 now means the provider genuinely returned no image for that prompt), voice (browser Web Speech API), settings with a dark/light theme toggle (persisted to `user_settings.theme` when signed in, localStorage otherwise) and metadata-only JSON data export (full message bodies only with explicit opt-in) and account deletion, `/api/health`, authenticated `/integrations` status panel, plus public site pages (`/features`, `/privacy`, `/terms`), a site footer, 404/loading/error pages, and `sitemap.xml`/`robots.txt` covering public routes only.
 
 API rate limits (per IP, per 60 seconds, in-memory; a `429` response includes a `Retry-After` header): `/api/chat` 30/min, `/api/vision` and `/api/image` 10/min each. Limits do not store any user content.
 
@@ -65,7 +66,7 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 ## 8. Known limitations
 - Email report delivery works only when a provider is configured (`EMAIL_PROVIDER=resend` + `RESEND_API_KEY`); without them the app returns a clear "not configured" error and claims no delivery. Sending to parents/third parties is intentionally not a feature.
 - PDF export: saved reports download as a real server-generated PDF (`/api/report-pdf`, owner-only); browser print → "Save as PDF" remains the fallback if that route fails.
-- Image generation depends entirely on the configured Gemini model supporting it; the default text model will return a clear error.
+- Image generation uses its own model (`GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`) with `responseModalities: ["TEXT","IMAGE"]` requested explicitly. The old bug — `/api/image` calling the text-only chat model (`gemini-2.0-flash`) with no image-output request, so it could never return image data — is fixed; a 422 now only means the provider genuinely returned no image for that prompt.
 - Voice recognition depends on the browser (best in Chrome/Edge); Safari support is limited.
 - Semantic/vector memory search is not included — memories are retrieved per-user by keyword relevance (title > category > content), not embeddings.
 - Native iOS/Android apps are not included; the PWA is the mobile route. Capacitor could wrap this codebase later.
@@ -82,7 +83,7 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 - Study assistant + session log; mood/stress check-ins (non-clinical, self-reported only).
 - Voice: browser Web Speech input + spoken replies, with typed fallback and permission errors.
 - Vision: upload validation (type/size), Gemini vision Q&A; uploads are **not stored**.
-- Image generation: real Gemini route; returns an image only when the model returns image data, otherwise an honest 422 — no placeholders.
+- Image generation: real Gemini route on a separate image model (`GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`) with image output requested explicitly; returns an image when the provider returns one, otherwise an honest 422 — no placeholders. (Previously it called the text-only chat model, so it could never return an image — fixed.)
 - Dashboard computed from real records with empty states (no fake charts or hardcoded stats).
 - Weekly reports: generated from real data, one per user per week (upsert + unique index, migration 0002), server-generated PDF download (owner-only, pdf-lib) plus print → Save as PDF fallback, and a Resend provider interface for emailing the summary only (honest "not configured" error when unset).
 - Chat streaming: `/api/chat/stream` (same validation, rate limit, history/memory caps as `/api/chat`), visible streaming indicator, stop control, automatic fallback to `/api/chat`, final reply saved as one message.
@@ -103,7 +104,7 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 - Supabase/Gemini end-to-end: signup → profile → chat reply → persistence, with real keys.
 - RLS two-account check: a second user must not see the first user's records.
 - Voice on a real phone (needs HTTPS + mic permission); camera features do not exist in EDITH (they belong to the separate ULTRON project).
-- Live 429 behaviour and live Gemini vision/image success against a real key and a capable model.
+- Live 429 behaviour and live Gemini vision/image success against a real key and a capable model. Image generation is unit-verified against a mocked provider (correct model + `responseModalities`), but no real image has been generated live yet — that needs a live end-to-end test on the deployed site.
 
 ### Database naming map (spec §18 → actual tables; no duplicates, no renames)
 | Spec name | Actual table | Note |

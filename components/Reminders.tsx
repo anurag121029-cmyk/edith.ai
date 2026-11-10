@@ -9,13 +9,15 @@ const NOTIFIED_KEY = "edith-reminders-notified";
  * In-app task reminders via browser notifications.
  *
  * Permission is requested ONLY after the user taps "Enable reminders" —
- * never silently. While the app is open it checks every minute for tasks
- * whose reminder time has arrived and not yet been notified (notified ids
- * are tracked in localStorage) and shows:
- *   "Time to start: <title> — <place>, at <time>"
+ * never silently. While the app is open it checks every minute for:
+ *  (a) tasks whose reminder time has arrived (once ever per task), and
+ *  (b) tasks whose start time has passed while still not done — the
+ *      "you forgot this task" nudge, once per task per day (tracked as
+ *      "<taskId>:<date>" in localStorage, so it never spams).
  * Honest limit: this only fires while the app is open in a tab — there is
  * no push server on the free plan, so closed-tab reminders are not sent.
- * The Tasks page and dashboard also list upcoming reminders in the UI.
+ * The Tasks page and dashboard also list upcoming and pending reminders
+ * in the UI.
  */
 export default function Reminders() {
   const { user, sb } = useUser();
@@ -31,23 +33,42 @@ export default function Reminders() {
 
   const check = useCallback(async () => {
     if (!sb || !user || !("Notification" in window) || Notification.permission !== "granted") return;
-    const { data } = await sb.from("tasks").select("id,title,place,reminder_at").neq("status", "done").not("reminder_at", "is", null);
+    const { data } = await sb.from("tasks").select("id,title,place,reminder_at,start_time").neq("status", "done").or("reminder_at.not.is.null,start_time.not.is.null");
     if (!data) return;
     let notified: string[] = [];
     try { notified = JSON.parse(localStorage.getItem(NOTIFIED_KEY) || "[]") as string[]; } catch { notified = []; }
     const now = Date.now();
+    const today = new Date().toISOString().slice(0, 10);
     let changed = false;
-    for (const t of data as { id: string; title: string; place?: string | null; reminder_at: string }[]) {
-      if (!t.reminder_at || Date.parse(t.reminder_at) > now || notified.includes(t.id)) continue;
-      const when = new Date(t.reminder_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      try {
-        new Notification(`Time to start: ${t.title}`, {
-          body: `${t.place ? `${t.place} · ` : ""}at ${when}`,
-          tag: `edith-task-${t.id}`,
-        });
-      } catch { /* notifications blocked */ }
-      notified.push(t.id);
-      changed = true;
+    for (const t of data as { id: string; title: string; place?: string | null; reminder_at: string | null; start_time: string | null }[]) {
+      // (a) Reminder time arrived — once ever per task.
+      if (t.reminder_at && Date.parse(t.reminder_at) <= now && !notified.includes(t.id)) {
+        const when = new Date(t.reminder_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        try {
+          new Notification(`Time to start: ${t.title}`, {
+            body: `${t.place ? `${t.place} · ` : ""}at ${when}`,
+            tag: `edith-task-${t.id}`,
+          });
+        } catch { /* notifications blocked */ }
+        notified.push(t.id);
+        changed = true;
+      }
+      // (b) Start time passed and the task is still not done — the
+      // "you forgot this task" nudge, once per task per day.
+      if (t.start_time && Date.parse(t.start_time) <= now) {
+        const key = `${t.id}:${today}`;
+        if (!notified.includes(key)) {
+          const when = new Date(t.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          try {
+            new Notification(`Still pending: ${t.title}`, {
+              body: `You were meant to start this at ${when}${t.place ? ` · ${t.place}` : ""} — it is still not done.`,
+              tag: `edith-task-pending-${t.id}-${today}`,
+            });
+          } catch { /* notifications blocked */ }
+          notified.push(key);
+          changed = true;
+        }
+      }
     }
     if (changed) { try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notified)); } catch { /* ignore */ } }
   }, [sb, user]);

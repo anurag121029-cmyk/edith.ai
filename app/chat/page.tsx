@@ -5,6 +5,7 @@ import { AppShell, Glass, EmptyState } from "@/components/ui";
 import { useUser } from "@/lib/useUser";
 import { searchMemories, formatMemoryContext } from "@/lib/logic";
 import { renderMarkdownToHtml } from "@/lib/markdown";
+import CameraCapture from "@/components/CameraCapture";
 type Msg={role:string;content:string};
 type Conv={id:string;title:string};
 type Mem={title:string;content:string;category?:string|null;created_at?:string};
@@ -22,6 +23,15 @@ export default function Page(){
   const [streaming,setStreaming]=useState(false);
   const streamRef=useRef<AbortController|null>(null);
   const endRef=useRef<HTMLDivElement>(null);
+  // ChatGPT-style photo question: a captured photo waits above the
+  // composer; the photo itself is never saved, only the "[Photo] …"
+  // text and the answer. Thumbnails live in memory for this session.
+  const [showCamera,setShowCamera]=useState(false);
+  const [photo,setPhoto]=useState<{base64:string;mimeType:string}|null>(null);
+  const [photoByMsg,setPhotoByMsg]=useState<Record<number,string>>({});
+  const [photoBusy,setPhotoBusy]=useState(false);
+
+  const QUICK_PROMPTS=["I'm feeling stressed","Help me plan today","I can't focus"];
 
   async function loadConvs(){ if(!sb||!user) return; const {data}=await sb.from("conversations").select("id,title").order("created_at",{ascending:false}); setConvs((data||[]) as Conv[]); }
   async function loadMemories(){
@@ -115,7 +125,33 @@ export default function Page(){
 
   function stopStreaming(){ streamRef.current?.abort(); }
 
-  async function send(e:React.FormEvent){ e.preventDefault(); if(!input.trim()||busy) return; const text=input.trim(); setInput(""); await sendMessage(text, msgs, convId); }
+  /** Photo question (ChatGPT-style): send the photo to /api/vision and
+   * append the user text + the answer to the thread exactly like a text
+   * turn. The image bytes are never saved to the conversation. On
+   * failure the typed question and the photo are kept so the user can
+   * retry. */
+  async function sendPhotoQuestion(){
+    if(!photo||photoBusy||busy) return;
+    const question=input.trim()||"What is in this picture?";
+    const userText=`[Photo] ${question}`;
+    const userMsg={role:"user",content:userText};
+    const history=[...msgs,userMsg];
+    setErr(""); setBusy(true); setPhotoBusy(true);
+    try{
+      const res=await fetch("/api/vision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imageBase64:photo.base64,mimeType:photo.mimeType,question})});
+      const d=await res.json(); if(!res.ok) throw new Error(d.error||"Vision request failed");
+      const reply=d.reply as string;
+      setPhotoByMsg((prev)=>({...prev,[history.length-1]:`data:${photo.mimeType};base64,${photo.base64}`}));
+      setMsgs([...history,{role:"assistant",content:reply}]);
+      await persistTurn(userText, reply, convId);
+      setPhoto(null); setShowCamera(false); setInput("");
+    }catch(e){ setErr((e as Error).message); /* keep the question and the photo for a retry */ }
+    finally{ setBusy(false); setPhotoBusy(false); }
+  }
+
+  async function send(e:React.FormEvent){ e.preventDefault(); if(busy) return; if(photo){ await sendPhotoQuestion(); return; } if(!input.trim()) return; const text=input.trim(); setInput(""); await sendMessage(text, msgs, convId); }
+
+  async function sendQuick(text:string){ if(busy) return; await sendMessage(text, msgs, convId); }
 
   async function regenerate(){
     if(busy||!msgs.length) return;
@@ -156,7 +192,7 @@ export default function Page(){
         <div aria-live="polite" style={{minHeight:260,maxHeight:480,overflowY:"auto",display:"flex",flexDirection:"column",gap:".6rem"}}>
           {msgs.length===0 && <EmptyState text="Ask EDITH anything — study help, maths, coding, planning, or a summary." />}
           {msgs.map((m,i)=> m.role==="user" ? (
-            <div key={i} className="chat-bubble-user" style={{alignSelf:"flex-end",maxWidth:"85%",padding:".6rem .9rem",borderRadius:16,whiteSpace:"pre-wrap"}}><strong>You:</strong> {m.content}</div>
+            <div key={i} className="chat-bubble-user" style={{alignSelf:"flex-end",maxWidth:"85%",padding:".6rem .9rem",borderRadius:16,whiteSpace:"pre-wrap"}}><strong>You:</strong> {m.content}{photoByMsg[i]&&<img src={photoByMsg[i]} alt="Photo asked about" style={{display:"block",maxWidth:"100%",borderRadius:12,marginTop:".4rem"}} />}</div>
           ) : (
             <div key={i} className="chat-bubble-edith" style={{alignSelf:"flex-start",maxWidth:"85%",padding:".6rem .9rem",borderRadius:16}}>
               <strong>EDITH:</strong>
@@ -173,7 +209,18 @@ export default function Page(){
         {memoriesUsed>0 && <p className="muted" role="status" style={{fontSize:".85rem"}}>Using {memoriesUsed} saved {memoriesUsed===1?"memory":"memories"} for context. <Link href="/memories">Manage memories →</Link></p>}
         {!memoryEnabled && <p className="muted" style={{fontSize:".85rem"}}>Memory is disabled, so no saved memories were used. <Link href="/memories">Enable it in Memories →</Link></p>}
         {err && <p className="error" role="alert">{err}</p>}
-        <form onSubmit={send} style={{display:"flex",gap:".5rem",marginTop:"1rem"}}><input className="input" aria-label="Message EDITH" value={input} onChange={e=>setInput(e.target.value)} placeholder="Type your message…" maxLength={4000} /><button className="btn" disabled={busy}>Send</button></form>
+        <p style={{display:"flex",gap:".4rem",flexWrap:"wrap",marginTop:"1rem"}} aria-label="Quick prompts">
+          {QUICK_PROMPTS.map((q)=><button key={q} type="button" className="btn btn-secondary" onClick={()=>void sendQuick(q)} disabled={busy}>{q}</button>)}
+        </p>
+        <p style={{marginTop:".5rem"}}><button type="button" className="btn btn-secondary" onClick={()=>setShowCamera(!showCamera)} disabled={busy}>{showCamera?"Hide camera":"📷 Ask about a photo"}</button></p>
+        {showCamera && <div style={{borderTop:"1px solid rgba(127,127,127,.3)",paddingTop:".5rem"}}>
+          <CameraCapture onCapture={(base64,mimeType)=>{ setPhoto({base64,mimeType}); setErr(""); }} onError={(m)=>setErr(m)} />
+        </div>}
+        {photo && <div style={{marginTop:".5rem"}}>
+          <img src={`data:${photo.mimeType};base64,${photo.base64}`} alt="Photo to ask about" style={{maxWidth:220,borderRadius:12}} />
+          <p><button type="button" className="btn btn-secondary" onClick={()=>setPhoto(null)}>× Remove photo</button> <span className="muted" style={{fontSize:".85rem"}}>Type a question (or leave it blank for “What is in this picture?”) and press Send.</span></p>
+        </div>}
+        <form onSubmit={send} style={{display:"flex",gap:".5rem",marginTop:"1rem"}}><input className="input" aria-label="Message EDITH" value={input} onChange={e=>setInput(e.target.value)} placeholder={photo?"Ask about this photo…":"Type your message…"} maxLength={4000} /><button className="btn" disabled={busy}>{photoBusy?"Asking…":"Send"}</button></form>
         <p style={{display:"flex",gap:".5rem",flexWrap:"wrap",marginTop:".5rem"}}><button className="btn btn-secondary" onClick={regenerate} disabled={busy||lastUserIdx<0}>↻ Regenerate last response</button>{streaming && <button className="btn btn-danger" onClick={stopStreaming}>■ Stop generating</button>}</p>
         <p className="muted" style={{fontSize:".8rem"}}>AI answers can be wrong — check important maths, facts and code. Replies stream from /api/chat/stream and fall back to /api/chat automatically if streaming fails. Assistant replies render simple markdown (headings, lists, bold, code blocks) plus styled maths: inline $...$ and block $$...$$ — styled notation, not KaTeX typesetting.</p>
       </Glass>

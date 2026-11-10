@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AppShell, Glass, EmptyState } from "@/components/ui";
 import { useUser } from "@/lib/useUser";
 import { computeTaskReport, sessionMinutes, type TaskReport } from "@/lib/taskReport";
+import CameraCapture from "@/components/CameraCapture";
 
 type Session={id:string;topic:string;duration_minutes:number;notes?:string;created_at:string};
 type OpenTask={id:string;title:string;place?:string|null;planned_minutes?:number|null;start_time?:string|null;status:string};
@@ -31,6 +32,10 @@ function StudyInner(){
   const [difficulty,setDifficulty]=useState(3); const [stressAfter,setStressAfter]=useState(5); const [note,setNote]=useState("");
   const [report,setReport]=useState<TaskReport|null>(null);
   const [saving,setSaving]=useState(false);
+  // Snap the problem: photograph a question and get a step-by-step answer.
+  const [snap,setSnap]=useState<{base64:string;mimeType:string}|null>(null);
+  const [snapQuestion,setSnapQuestion]=useState("Explain how to solve this problem step by step");
+  const [snapAnswer,setSnapAnswer]=useState(""); const [snapBusy,setSnapBusy]=useState(false); const [snapSaved,setSnapSaved]=useState(false);
   const startedRef=useRef(false);
 
   async function load(){ if(!sb||!user) return; const {data}=await sb.from("study_sessions").select("*").order("created_at",{ascending:false}).limit(20); setSessions((data||[]) as Session[]); const {data:tasks}=await sb.from("tasks").select("id,title,place,planned_minutes,start_time,status").neq("status","done").order("due_date",{ascending:true}); setOpenTasks((tasks||[]) as OpenTask[]); }
@@ -87,6 +92,22 @@ function StudyInner(){
   async function log(e:React.FormEvent){ e.preventDefault(); if(!sb||!user) return; const {error}=await sb.from("study_sessions").insert({user_id:user.id,topic,duration_minutes:mins,notes:answer||null}); if(error) setErr(error.message); else load(); }
   async function ask(e:React.FormEvent){ e.preventDefault(); setBusy(true); setErr(""); try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:`Explain step by step for a student, then give one practice question: ${question}`})}); const d=await res.json(); if(!res.ok) throw new Error(d.error); setAnswer(d.reply); }catch(e){ setErr((e as Error).message); } finally{ setBusy(false); } }
 
+  async function askSnap(e:React.FormEvent){
+    e.preventDefault(); if(!snap) { setErr("Take a photo of the problem first."); return; }
+    setSnapBusy(true); setErr(""); setSnapAnswer("");
+    try{
+      const res=await fetch("/api/vision",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imageBase64:snap.base64,mimeType:snap.mimeType,question:snapQuestion})});
+      const d=await res.json(); if(!res.ok) throw new Error(d.error); setSnapAnswer(d.reply as string);
+    }catch(e){ setErr((e as Error).message); } finally{ setSnapBusy(false); }
+  }
+  function saveSnapToNotes(){
+    if(!snapAnswer) return;
+    const entry=`Photo Q: ${snapQuestion}\nA: ${snapAnswer.slice(0,500)}`;
+    setNote((prev)=>prev?`${prev}\n${entry}`:entry);
+    setSnapSaved(true);
+    setTimeout(()=>setSnapSaved(false), 3000);
+  }
+
   return <>
     <Glass><h3 style={{marginTop:0}}>Ask a study question</h3>
       <form onSubmit={ask}><label htmlFor="q">Question / topic</label><input id="q" className="input" value={question} onChange={e=>setQuestion(e.target.value)} required placeholder="e.g. Why does integration give area under a curve?" /><p><button className="btn" disabled={busy}>{busy?"Thinking…":"Explain"}</button></p></form>
@@ -138,6 +159,26 @@ function StudyInner(){
         <p><strong>{report.paceVerdict}</strong> Difficulty: {report.difficultyLabel||"—"} · Stress afterwards: {report.stressLabel||"—"}{report.stressAfter!==null?` (${report.stressAfter}/10)`:""}.</p>
         <ul>{report.lines.map((l,i)=><li key={i}>{l}</li>)}</ul>
         <p className="muted" style={{fontSize:".85rem"}}>{report.disclaimer}</p>
+      </div>}
+      {err&&<p className="error" role="alert">{err}</p>}
+    </Glass>
+    <div style={{height:12}} />
+
+    <Glass><h3 style={{marginTop:0}}>📷 Snap the problem</h3>
+      <p className="muted" style={{fontSize:".9rem"}}>Photograph a question or diagram and get a step-by-step explanation — while a session is running, or on its own. The photo is never stored; only the question and answer can be saved to your session notes.</p>
+      <CameraCapture onCapture={(base64,mimeType)=>{ setSnap({base64,mimeType}); setSnapAnswer(""); setErr(""); }} onError={(m)=>setErr(m)} buttonLabel="📷 Take a photo of the problem" />
+      {snap&&<div style={{marginTop:".5rem"}}>
+        <img src={`data:${snap.mimeType};base64,${snap.base64}`} alt="Problem photographed" style={{maxWidth:260,borderRadius:12}} />
+        <p><button type="button" className="btn btn-secondary" onClick={()=>{ setSnap(null); setSnapAnswer(""); }}>× Remove photo</button></p>
+      </div>}
+      <form onSubmit={askSnap}>
+        <label htmlFor="snap-q">Question about the photo</label>
+        <input id="snap-q" className="input" value={snapQuestion} onChange={e=>setSnapQuestion(e.target.value)} placeholder="Explain how to solve this problem step by step" />
+        <p><button className="btn" disabled={snapBusy||!snap}>{snapBusy?"Looking at the photo…":"Ask about the photo"}</button></p>
+      </form>
+      {snapAnswer&&<div>
+        <div style={{whiteSpace:"pre-wrap"}}>{snapAnswer}</div>
+        <p style={{display:"flex",gap:".5rem",flexWrap:"wrap"}}><button type="button" className="btn btn-secondary" onClick={saveSnapToNotes}>{snapSaved?"Saved to session notes ✓":"Save to session notes"}</button><span className="muted" style={{fontSize:".85rem"}}>{running?"Saved into the note that is stored when you finish this session.":"It will be stored with your next finished session."}</span></p>
       </div>}
       {err&&<p className="error" role="alert">{err}</p>}
     </Glass>

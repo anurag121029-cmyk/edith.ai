@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AppShell, Glass, EmptyState } from "@/components/ui";
 import { useUser } from "@/lib/useUser";
 import { computeTaskReport, sessionMinutes } from "@/lib/taskReport";
+import { pendingTasks, defaultReminderAt } from "@/lib/pending";
 type Task={id:string;title:string;description?:string;status:string;priority:string;category?:string;due_date?:string|null;start_time?:string|null;planned_minutes?:number|null;place?:string|null;reminder_at?:string|null;difficulty?:number|null;stress_after?:number|null;started_at?:string|null;completed_at?:string|null};
 function toISO(local: string): string | null { if (!local) return null; const d = new Date(local); return Number.isNaN(d.getTime()) ? null : d.toISOString(); }
 function toLocal(iso?: string | null): string { if (!iso) return ""; const d = new Date(iso); if (Number.isNaN(d.getTime())) return ""; const p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -15,13 +16,30 @@ export default function Page(){
   const [showReport,setShowReport]=useState<string|null>(null);
   async function load(){ if(!sb||!user) return; const {data,error}=await sb.from("tasks").select("*").order("due_date",{ascending:true}); if(error) setErr(error.message); setTasks((data||[]) as Task[]); }
   useEffect(()=>{ load(); /* eslint-disable-next-line */ },[user]);
-  async function add(e:React.FormEvent){ e.preventDefault(); if(!sb||!user) return; const {error}=await sb.from("tasks").insert({user_id:user.id,title:form.title,priority:form.priority,category:form.category,due_date:form.due_date||null,start_time:toISO(form.start_time),planned_minutes:form.planned_minutes?Number(form.planned_minutes):null,place:form.place||null,reminder_at:toISO(form.reminder_at)}); if(error) setErr(error.message); else { setForm({title:"",priority:"medium",category:"general",due_date:"",start_time:"",planned_minutes:"",place:"",reminder_at:""}); load(); } }
+  async function add(e:React.FormEvent){ e.preventDefault(); if(!sb||!user) return; const reminderIso=form.reminder_at?toISO(form.reminder_at):defaultReminderAt({start_time:toISO(form.start_time),due_date:form.due_date||null}); const {error}=await sb.from("tasks").insert({user_id:user.id,title:form.title,priority:form.priority,category:form.category,due_date:form.due_date||null,start_time:toISO(form.start_time),planned_minutes:form.planned_minutes?Number(form.planned_minutes):null,place:form.place||null,reminder_at:reminderIso}); if(error) setErr(error.message); else { setForm({title:"",priority:"medium",category:"general",due_date:"",start_time:"",planned_minutes:"",place:"",reminder_at:""}); load(); } }
+  // Auto-reminder default, shown in the form as soon as the user picks a
+  // start time or due date: the reminder becomes the start time, or
+  // 09:00 on the due date. The user can still change or clear it.
+  function withDefaultReminder(next: typeof form): typeof form {
+    if (next.reminder_at) return next;
+    const iso = defaultReminderAt({ start_time: toISO(next.start_time), due_date: next.due_date || null });
+    return iso ? { ...next, reminder_at: toLocal(iso) } : next;
+  }
   async function update(t:Task,patch:Partial<Task>){ if(!sb) return; const {error}=await sb.from("tasks").update(patch).eq("id",t.id); if(error) setErr(error.message); else load(); }
   async function del(id:string){ if(!sb) return; if(!confirm("Delete this task?")) return; await sb.from("tasks").delete().eq("id",id); load(); }
   const shown=tasks.filter(t=>filter==="all"?true:filter==="overdue"? t.status!=="done"&&t.due_date&&t.due_date<new Date().toISOString().slice(0,10) : t.status===filter);
   const now = Date.now();
   const reminders = tasks.filter(t=>t.status!=="done"&&t.reminder_at&&Date.parse(t.reminder_at)<=now+24*60*60*1000).sort((a,b)=>Date.parse(a.reminder_at||"")-Date.parse(b.reminder_at||""));
+  const pending = pendingTasks(tasks);
   return <AppShell title="Tasks"><Glass>
+    {user && pending.length>0 && <div style={{marginBottom:"1rem"}}>
+      <h3 style={{marginTop:0}}>⚠️ Pending — you haven't done this yet</h3>
+      <p className="muted" style={{fontSize:".85rem"}}>These were meant to start already and are still not done — EDITH is reminding you so they don't slip away.</p>
+      <ul style={{listStyle:"none",padding:0}}>{pending.map(t=><li key={t.id} className="glass" style={{padding:".6rem",marginBottom:".4rem"}}>
+        <strong>{t.title}</strong> <span className="muted">· was due to start {t.start_time?fmt(t.start_time):t.due_date?`on ${t.due_date}`:""}{t.place?` · ${t.place}`:""}{t.planned_minutes?` · ${t.planned_minutes} min planned`:""}</span>
+        <span style={{float:"right"}}><Link className="btn" href={`/study?task=${t.id}`}>Start now →</Link></span>
+      </li>)}</ul>
+    </div>}
     {!user && <EmptyState text="Sign in to create and persist tasks in Supabase." />}
     {user && reminders.length>0 && <div style={{marginBottom:"1rem"}}>
       <h3 style={{marginTop:0}}>⏰ Reminders — coming up in the next 24 hours</h3>
@@ -35,11 +53,11 @@ export default function Page(){
       <input className="input" aria-label="Task title" placeholder="Task title" required value={form.title} onChange={e=>setForm({...form,title:e.target.value})} />
       <select className="input" aria-label="Priority" value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
       <input className="input" aria-label="Category" placeholder="Category" value={form.category} onChange={e=>setForm({...form,category:e.target.value})} />
-      <input className="input" aria-label="Due date" type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})} />
-      <label style={{fontSize:".85rem"}}>Start time<input className="input" aria-label="Start time" type="datetime-local" value={form.start_time} onChange={e=>setForm({...form,start_time:e.target.value})} /></label>
+      <input className="input" aria-label="Due date" type="date" value={form.due_date} onChange={e=>setForm(withDefaultReminder({...form,due_date:e.target.value}))} />
+      <label style={{fontSize:".85rem"}}>Start time<input className="input" aria-label="Start time" type="datetime-local" value={form.start_time} onChange={e=>setForm(withDefaultReminder({...form,start_time:e.target.value}))} /></label>
       <label style={{fontSize:".85rem"}}>Planned minutes<input className="input" aria-label="Planned minutes" type="number" min={1} max={1440} placeholder="e.g. 60" value={form.planned_minutes} onChange={e=>setForm({...form,planned_minutes:e.target.value})} /></label>
       <input className="input" aria-label="Place" placeholder="Place (e.g. library, home desk)" value={form.place} onChange={e=>setForm({...form,place:e.target.value})} />
-      <label style={{fontSize:".85rem"}}>Remind me at<input className="input" aria-label="Reminder time" type="datetime-local" value={form.reminder_at} onChange={e=>setForm({...form,reminder_at:e.target.value})} /></label>
+      <label style={{fontSize:".85rem"}}>Remind me at (auto-set from the start time, or 09:00 on the due date)<input className="input" aria-label="Reminder time" type="datetime-local" value={form.reminder_at} onChange={e=>setForm({...form,reminder_at:e.target.value})} /></label>
       <button className="btn">Add task</button>
     </form>
     <p className="muted" style={{fontSize:".85rem"}}>Plan it with a start time, place and reminder, then press Start on the task when it is time — the study page runs the timer and writes the report when you finish.</p>

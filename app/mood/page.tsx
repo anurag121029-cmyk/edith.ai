@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AppShell, Glass, EmptyState } from "@/components/ui";
 import { useUser } from "@/lib/useUser";
 import { moodTrend, stressSuggestion } from "@/lib/logic";
+import BreathingExercise from "@/components/BreathingExercise";
 type Check={id:string;mood_score:number;stress_score:number;note?:string;created_at:string};
 type AutoMood={moodScore:number;stressScore:number;confidence:number;confidenceLabel:string;sampleCount:number;stressHits:number;calmHits:number;source:string};
 type MoodReading={auto:AutoMood|null;manualLatest:Check|null;manualRecentCount:number;reading:string;readingSource:string;updatedAt:string;disclaimer:string};
@@ -30,6 +31,11 @@ export default function Page(){
       <p className="muted" style={{fontSize:".85rem"}}>{auto.disclaimer}</p>
     </>}
     <p><button className="btn btn-secondary" onClick={loadAuto} disabled={autoBusy}>↻ Refresh automatic reading</button></p>
+  </Glass><div style={{height:12}} />
+  <Glass>
+    <h3 style={{marginTop:0}}>Take 2 minutes to breathe</h3>
+    <p className="muted">Box breathing — 4 seconds in, 4 hold, 4 out, 4 hold — whenever stress feels high. A short calming exercise, not medical advice.</p>
+    <BreathingExercise />
   </Glass><div style={{height:12}} />
   <Glass>
     <p className="muted">These are <strong>your self-reported scores</strong> — EDITH does not detect or diagnose your psychological state. You can skip check-ins or delete records any time. This data is private to your account and is not shared.</p>

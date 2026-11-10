@@ -4,6 +4,8 @@ import Link from "next/link";
 import { AppShell, Glass, EmptyState } from "@/components/ui";
 import { useUser } from "@/lib/useUser";
 import { taskCompletion, tasksDueToday, workloadSummary, moodTrend, type TaskLike } from "@/lib/logic";
+import { pendingTasks } from "@/lib/pending";
+import BreathingExercise from "@/components/BreathingExercise";
 
 type StressApi = {
   score: number | null;
@@ -155,6 +157,13 @@ export default function Page() {
 
               <h3>What may help</h3>
               <ul>{stress.suggestions.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              {(stress.level === "High" || stress.level === "Very high") && (
+                <>
+                  <h3>Take 2 minutes to breathe</h3>
+                  <p className="muted" style={{ fontSize: ".9rem" }}>Your stress is {stress.level.toLowerCase()} right now — a short box-breathing exercise can help you slow down before the next task.</p>
+                  <BreathingExercise />
+                </>
+              )}
               <p className="muted" style={{ fontSize: ".85rem" }}>These are general, non-clinical suggestions tied to your biggest factors — not medical advice. If stress keeps feeling high, consider talking to someone you trust or a professional.</p>
             </>
           )}
@@ -174,8 +183,21 @@ export default function Page() {
             const list = (data?.tasks || []) as TodayTask[];
             const todays = list.filter((t) => t.status !== "done" && ((t.due_date && t.due_date.slice(0, 10) === today) || (t.start_time && t.start_time.slice(0, 10) === today)));
             const dueReminders = list.filter((t) => t.status !== "done" && t.reminder_at && Date.parse(t.reminder_at) <= Date.now() + 24 * 60 * 60 * 1000);
-            if (!todays.length && !dueReminders.length) return <EmptyState text="Nothing planned for today — add a task with a start time, place and reminder on the Tasks page." />;
+            const pending = pendingTasks(list.map((t) => ({ id: (t as { id?: string }).id || "", title: (t as { title?: string }).title || "Task", status: t.status, start_time: t.start_time, due_date: t.due_date, place: t.place })));
+            if (!todays.length && !dueReminders.length && !pending.length) return <EmptyState text="Nothing planned for today — add a task with a start time, place and reminder on the Tasks page." />;
             return (<>
+              {pending.length > 0 && (<>
+                <h3 style={{ marginTop: 0 }}>⚠️ Pending — you haven't done this yet</h3>
+                <ul style={{ listStyle: "none", padding: 0 }}>
+                  {pending.map((t) => (
+                    <li key={t.id} style={{ marginBottom: ".5rem" }}>
+                      <strong>{t.title}</strong>
+                      <span className="muted"> · was due to start {t.start_time ? new Date(t.start_time).toLocaleString() : t.due_date ? `on ${t.due_date}` : ""}{t.place ? ` · ${t.place}` : ""}</span>
+                      {" "}<Link className="btn btn-secondary" href={`/study?task=${t.id}`}>Start now →</Link>
+                    </li>
+                  ))}
+                </ul>
+              </>)}
               {todays.length > 0 && (<>
                 <h3 style={{ marginTop: 0 }}>Today's tasks</h3>
                 <ul style={{ listStyle: "none", padding: 0 }}>

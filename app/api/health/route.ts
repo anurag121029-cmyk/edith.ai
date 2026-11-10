@@ -4,7 +4,7 @@ export async function GET() {
   return NextResponse.json({ ok: true, app: "edith-ai", checks: {
     supabaseConfigured: isSupabaseConfigured,
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
-    geminiModel: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+    geminiModel: process.env.GEMINI_MODEL || "gemini-3.8-flash",
     geminiImageModel,
     emailConfigured: Boolean(process.env.EMAIL_PROVIDER),
     serviceRoleConfigured: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),

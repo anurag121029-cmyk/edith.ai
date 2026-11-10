@@ -18,6 +18,7 @@ export async function geminiGenerate(parts: unknown[], timeoutMs = 30000, opts: 
         body: JSON.stringify({ contents: [{ parts }], ...(opts.generationConfig ? { generationConfig: opts.generationConfig } : {}) }),
       });
       if ((res.status === 429 || res.status >= 500) && attempt === 0) { lastErr = new Error(`Gemini provider error ${res.status}`); continue; }
+      if (res.status === 404) throw Object.assign(new Error(`Gemini provider error 404: the configured model (${model}) may be retired or unavailable — check GEMINI_MODEL.`), { status: 502 });
       if (!res.ok) throw Object.assign(new Error(`Gemini provider error ${res.status}`), { status: 502 });
       const data = await res.json();
       const outParts = data?.candidates?.[0]?.content?.parts || [];
@@ -70,6 +71,9 @@ export async function* geminiGenerateStream(
     },
   );
   if (!res.ok || !res.body) {
+    if (res.status === 404) {
+      throw Object.assign(new Error(`Gemini provider error 404: the configured model (${geminiModel}) may be retired or unavailable — check GEMINI_MODEL.`), { status: 502 });
+    }
     throw Object.assign(new Error(`Gemini provider error ${res.status}`), { status: 502 });
   }
   const reader = res.body.getReader();

@@ -19,8 +19,8 @@ Copy `.env.example` to `.env.local` and fill in real values (never commit `.env.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API | Public, protected by RLS |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API | **Server only, optional** — enables account deletion |
 | `GEMINI_API_KEY` | Google AI Studio | **Server only** |
-| `GEMINI_MODEL` | e.g. `gemini-2.0-flash` | Chat, streaming and vision — must be a text/multimodal model |
-| `GEMINI_IMAGE_MODEL` | e.g. `gemini-2.5-flash-image` | **Separate image model** for `/api/image` (default `gemini-2.5-flash-image`, "Nano Banana"). Do NOT set this to the chat model — `gemini-2.0-flash` returns text only, so image generation can never work with it. The image route requests `responseModalities: ["TEXT","IMAGE"]` explicitly. |
+| `GEMINI_MODEL` | e.g. `gemini-3.8-flash` | Chat, streaming and vision — must be a text/multimodal model |
+| `GEMINI_IMAGE_MODEL` | e.g. `gemini-2.5-flash-image` | **Separate image model** for `/api/image` (default `gemini-2.5-flash-image`, "Nano Banana"). Do NOT set this to the chat model — `gemini-3.8-flash` returns text only, so image generation can never work with it. The image route requests `responseModalities: ["TEXT","IMAGE"]` explicitly. Note: `gemini-2.5-flash-image` is deprecated with a March 15, 2027 shutdown — it is still served, but plan a migration before then. |
 | `NEXT_PUBLIC_APP_URL` | e.g. `http://localhost:3000` | Used for auth email redirects |
 | `EMAIL_PROVIDER` | optional | Leave blank: email report delivery is shown as unavailable in the app |
 
@@ -66,7 +66,7 @@ The design system was refreshed in `app/globals.css` (deeper liquid-glass panels
 ## 8. Known limitations
 - Email report delivery works only when a provider is configured (`EMAIL_PROVIDER=resend` + `RESEND_API_KEY`); without them the app returns a clear "not configured" error and claims no delivery. Sending to parents/third parties is intentionally not a feature.
 - PDF export: saved reports download as a real server-generated PDF (`/api/report-pdf`, owner-only); browser print → "Save as PDF" remains the fallback if that route fails.
-- Image generation uses its own model (`GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`) with `responseModalities: ["TEXT","IMAGE"]` requested explicitly. The old bug — `/api/image` calling the text-only chat model (`gemini-2.0-flash`) with no image-output request, so it could never return image data — is fixed; a 422 now only means the provider genuinely returned no image for that prompt.
+- Image generation uses its own model (`GEMINI_IMAGE_MODEL`, default `gemini-2.5-flash-image`) with `responseModalities: ["TEXT","IMAGE"]` requested explicitly. The old bug — `/api/image` calling the text-only chat model (`gemini-3.8-flash`) with no image-output request, so it could never return image data — is fixed; a 422 now only means the provider genuinely returned no image for that prompt. Note: `gemini-2.5-flash-image` is deprecated with a March 15, 2027 shutdown; it is still served.
 - Voice recognition depends on the browser (best in Chrome/Edge); Safari support is limited.
 - Semantic/vector memory search is not included — memories are retrieved per-user by keyword relevance (title > category > content), not embeddings.
 - Native iOS/Android apps are not included; the PWA is the mobile route. Capacitor could wrap this codebase later.

@@ -8,6 +8,7 @@ export const NAV = [
   ["/study", "Study", "📚"],
   ["/tasks", "Tasks", "✓"],
   ["/workload", "Workload", "📊"],
+  ["/patterns", "Patterns", "🔍"],
   ["/mood", "Stress & mood", "♥"],
   ["/insights", "Insights", "📈"],
   ["/memories", "Memories", "🧠"],

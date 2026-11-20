@@ -37,6 +37,14 @@ type WorkloadApi = {
   disclaimer: string;
 };
 
+type PatternsApi = {
+  wellbeing: { today: number | null; average7: number | null };
+  briefing: string;
+  source: "gemini" | "template" | "none";
+  hasData: boolean;
+  disclaimer: string;
+};
+
 const LEVEL_COLOR: Record<string, string> = {
   Low: "#22c55e",
   Moderate: "#eab308",
@@ -53,6 +61,8 @@ export default function Page() {
   const [workload, setWorkload] = useState<WorkloadApi | null>(null);
   const [workloadErr, setWorkloadErr] = useState("");
   const [workloadRefreshing, setWorkloadRefreshing] = useState(false);
+  const [patterns, setPatterns] = useState<PatternsApi | null>(null);
+  const [patternsErr, setPatternsErr] = useState("");
   async function loadWorkload() {
     setWorkloadRefreshing(true);
     try {
@@ -79,6 +89,15 @@ export default function Page() {
         if (!res.ok) throw new Error(d.error || "Stress score failed");
         setStress(d as StressApi);
       } catch (e) { setStressErr((e as Error).message); }
+    })();
+    (async () => {
+      try {
+        const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+        const res = await fetch(`/api/patterns?tz=${tz}`);
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Patterns failed");
+        setPatterns(d as PatternsApi);
+      } catch (e) { setPatternsErr((e as Error).message); }
     })();
     loadWorkload();
   }, [user, sb]);
@@ -173,6 +192,30 @@ export default function Page() {
             <Link className="btn btn-secondary" href="/tasks">Tasks (supporting) →</Link>
             <Link className="btn btn-secondary" href="/study">Study (supporting) →</Link>
           </p>
+        </Glass>
+
+        {/* Today, understood — daily wellbeing + briefing from your patterns. */}
+        <Glass>
+          <h2 style={{ marginTop: 0 }}>Today, understood</h2>
+          {patternsErr && <p className="error" role="alert">{patternsErr}</p>}
+          {!patterns && !patternsErr && <p className="muted">Learning your patterns…</p>}
+          {patterns && !patterns.hasData && (
+            <p className="muted">No patterns yet — use EDITH for a few days and it will start learning what your days usually look like. <Link href="/patterns">See your patterns →</Link></p>
+          )}
+          {patterns && patterns.hasData && (
+            <>
+              <p style={{ margin: ".2rem 0" }}>
+                {patterns.wellbeing.today !== null ? (
+                  <>Wellbeing today: <strong>{patterns.wellbeing.today}/100</strong>{patterns.wellbeing.average7 !== null ? ` (7-day average ${patterns.wellbeing.average7}/100)` : ""}.</>
+                ) : (
+                  <>No wellbeing estimate for today yet.</>
+                )}
+              </p>
+              {patterns.briefing && <p style={{ margin: ".5rem 0 0" }}>{patterns.briefing}</p>}
+              <p className="muted" style={{ fontSize: ".85rem", marginTop: ".5rem" }}>{patterns.disclaimer}</p>
+            </>
+          )}
+          <p style={{ marginTop: ".8rem" }}><Link className="btn btn-secondary" href="/patterns">Your patterns →</Link></p>
         </Glass>
 
         {/* Today — what to start, where, and when (from the Tasks planner). */}

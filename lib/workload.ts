@@ -129,7 +129,12 @@ export function workloadLevel(score: number | null): WorkloadResult["level"] {
   return "Very high";
 }
 
-function dayScore(d: { tasksCreated: number; tasksCompleted: number; studyMinutes: number; messages: number }): number {
+/**
+ * Daily activity score (0–100) from one day's counts. Shared with
+ * lib/patterns.ts so the 28-day series uses the same formula as the
+ * 7-day workload report — never duplicated.
+ */
+export function workloadDayScore(d: { tasksCreated: number; tasksCompleted: number; studyMinutes: number; messages: number }): number {
   return clamp(
     8 * (d.tasksCreated + d.tasksCompleted) + d.studyMinutes / 4 + 5 * d.messages,
     0,
@@ -246,7 +251,7 @@ export function computeWorkloadAnalysis(input: WorkloadInputs): WorkloadResult {
       studyMinutes: study.filter((s) => withinWindow(s.created_at, dayStart, dayEnd)).reduce((s, x) => s + (num(x.duration_minutes) || 0), 0),
       messages: weekMessages.filter((m) => withinWindow(m.created_at, dayStart, dayEnd)).length,
     };
-    daily.push({ ...d, score: dayScore(d) });
+    daily.push({ ...d, score: workloadDayScore(d) });
   }
 
   // Trend vs the previous 7 days, using the same daily score.
@@ -256,7 +261,7 @@ export function computeWorkloadAnalysis(input: WorkloadInputs): WorkloadResult {
     const key = dayKey(day);
     const dayStart = new Date(`${key}T00:00:00.000Z`).getTime();
     const dayEnd = dayStart + DAY_MS;
-    prevDaily.push(dayScore({
+    prevDaily.push(workloadDayScore({
       tasksCreated: tasks.filter((t) => withinWindow(t.created_at, dayStart, dayEnd)).length,
       tasksCompleted: tasks.filter((t) => (t.status || "") === "done" && withinWindow(t.updated_at || t.created_at, dayStart, dayEnd)).length,
       studyMinutes: (input.study || []).filter((s) => withinWindow(s.created_at, dayStart, dayEnd)).reduce((s, x) => s + (num(x.duration_minutes) || 0), 0),

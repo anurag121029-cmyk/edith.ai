@@ -227,6 +227,39 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
+-- ---------- 0005: daily insights (see migrations/0005_daily_insights.sql) ----------
+-- One remembered row per user per day (stress / workload / mood /
+-- wellbeing scores, patterns JSON, briefing text), owner-only RLS.
+create table if not exists public.daily_insights (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  date date not null,
+  stress_score int check (stress_score between 0 and 100),
+  workload_score int check (workload_score between 0 and 100),
+  mood_score int check (mood_score between 0 and 100),
+  wellbeing_score int check (wellbeing_score between 0 and 100),
+  patterns jsonb not null default '{}'::jsonb,
+  briefing text,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique(user_id, date));
+create index if not exists idx_daily_insights_user_date on public.daily_insights(user_id, date desc);
+drop trigger if exists set_updated_at_daily_insights on public.daily_insights;
+create trigger set_updated_at_daily_insights before update on public.daily_insights
+  for each row execute function public.set_updated_at();
+alter table public.daily_insights enable row level security;
+do $$ declare t text; begin
+  foreach t in array array['daily_insights'] loop
+    execute format('drop policy if exists %I on public.%I', t||'_select_own', t);
+    execute format('create policy %I on public.%I for select using (auth.uid() = user_id)', t||'_select_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_insert_own', t);
+    execute format('create policy %I on public.%I for insert with check (auth.uid() = user_id)', t||'_insert_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_update_own', t);
+    execute format('create policy %I on public.%I for update using (auth.uid() = user_id) with check (auth.uid() = user_id)', t||'_update_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_delete_own', t);
+    execute format('create policy %I on public.%I for delete using (auth.uid() = user_id)', t||'_delete_own', t);
+  end loop;
+end $$;
+
 -- ---------- DB health check (run manually) ----------
 -- select tablename from pg_tables where schemaname='public' order by 1;
 -- select tgname from pg_trigger where tgname='on_auth_user_created';

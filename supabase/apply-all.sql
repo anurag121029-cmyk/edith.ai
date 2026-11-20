@@ -260,6 +260,36 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
+-- ---------- 0006: journal entries (see migrations/0006_journal_entries.sql) ----------
+-- Optional private journal entries with an optional title and mood
+-- score (1–10). Several entries per day are allowed. Journal content
+-- is never sent to Gemini or used in any summary — owner-only RLS.
+create table if not exists public.journal_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  entry_date date not null,
+  title text,
+  content text not null,
+  mood_score int check (mood_score between 1 and 10),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+create index if not exists idx_journal_entries_user_date on public.journal_entries(user_id, entry_date desc);
+drop trigger if exists set_updated_at_journal_entries on public.journal_entries;
+create trigger set_updated_at_journal_entries before update on public.journal_entries
+  for each row execute function public.set_updated_at();
+alter table public.journal_entries enable row level security;
+do $$ declare t text; begin
+  foreach t in array array['journal_entries'] loop
+    execute format('drop policy if exists %I on public.%I', t||'_select_own', t);
+    execute format('create policy %I on public.%I for select using (auth.uid() = user_id)', t||'_select_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_insert_own', t);
+    execute format('create policy %I on public.%I for insert with check (auth.uid() = user_id)', t||'_insert_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_update_own', t);
+    execute format('create policy %I on public.%I for update using (auth.uid() = user_id) with check (auth.uid() = user_id)', t||'_update_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_delete_own', t);
+    execute format('create policy %I on public.%I for delete using (auth.uid() = user_id)', t||'_delete_own', t);
+  end loop;
+end $$;
+
 -- ---------- DB health check (run manually) ----------
 -- select tablename from pg_tables where schemaname='public' order by 1;
 -- select tgname from pg_trigger where tgname='on_auth_user_created';

@@ -10,6 +10,7 @@ export const NAV = [
   ["/workload", "Workload", "📊"],
   ["/patterns", "Patterns", "🔍"],
   ["/mood", "Stress & mood", "♥"],
+  ["/relax", "Relax", "🧘"],
   ["/journal", "Journal", "📓"],
   ["/insights", "Insights", "📈"],
   ["/memories", "Memories", "🧠"],

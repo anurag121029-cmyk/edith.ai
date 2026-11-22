@@ -181,6 +181,7 @@ export default function Page() {
                   <h3>Take 2 minutes to breathe</h3>
                   <p className="muted" style={{ fontSize: ".9rem" }}>Your stress is {stress.level.toLowerCase()} right now — a short box-breathing exercise can help you slow down before the next task.</p>
                   <BreathingExercise />
+                  <p><Link className="btn btn-secondary" href="/relax">More guided sessions →</Link></p>
                 </>
               )}
               <p className="muted" style={{ fontSize: ".85rem" }}>These are general, non-clinical suggestions tied to your biggest factors — not medical advice. If stress keeps feeling high, consider talking to someone you trust or a professional.</p>

@@ -290,6 +290,32 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
+-- ---------- 0007: relaxation sessions (see migrations/0007_relaxation_sessions.sql) ----------
+-- A record of completed guided relaxation sessions (which session, how
+-- long, optional mood afterwards) — owner-only RLS.
+create table if not exists public.relaxation_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  session_id text not null,
+  duration_seconds int not null check (duration_seconds > 0),
+  completed boolean not null default true,
+  mood_after int check (mood_after between 1 and 10),
+  created_at timestamptz not null default now());
+create index if not exists idx_relaxation_sessions_user_created on public.relaxation_sessions(user_id, created_at desc);
+alter table public.relaxation_sessions enable row level security;
+do $$ declare t text; begin
+  foreach t in array array['relaxation_sessions'] loop
+    execute format('drop policy if exists %I on public.%I', t||'_select_own', t);
+    execute format('create policy %I on public.%I for select using (auth.uid() = user_id)', t||'_select_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_insert_own', t);
+    execute format('create policy %I on public.%I for insert with check (auth.uid() = user_id)', t||'_insert_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_update_own', t);
+    execute format('create policy %I on public.%I for update using (auth.uid() = user_id) with check (auth.uid() = user_id)', t||'_update_own', t);
+    execute format('drop policy if exists %I on public.%I', t||'_delete_own', t);
+    execute format('create policy %I on public.%I for delete using (auth.uid() = user_id)', t||'_delete_own', t);
+  end loop;
+end $$;
+
 -- ---------- DB health check (run manually) ----------
 -- select tablename from pg_tables where schemaname='public' order by 1;
 -- select tgname from pg_trigger where tgname='on_auth_user_created';

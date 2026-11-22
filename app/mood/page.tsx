@@ -61,6 +61,12 @@ export default function Page(){
     <h3 style={{marginTop:0}}>Take 2 minutes to breathe</h3>
     <p className="muted">Box breathing — 4 seconds in, 4 hold, 4 out, 4 hold — whenever stress feels high. A short calming exercise, not medical advice.</p>
     <BreathingExercise />
+    <p><Link className="btn btn-secondary" href="/relax">More guided sessions →</Link></p>
+  </Glass><div style={{height:12}} />
+  <Glass>
+    <h3 style={{marginTop:0}}>Guided relaxation</h3>
+    <p className="muted">Six guided sessions — breathing, body scan, muscle relaxation and visualisation — with a player that talks you through each step. Your practice is recorded so you can see it build up.</p>
+    <p><Link className="btn" href="/relax">Open guided relaxation →</Link></p>
   </Glass><div style={{height:12}} />
   <Glass>
     <p className="muted">These are <strong>your self-reported scores</strong> — EDITH does not detect or diagnose your psychological state. You can skip check-ins or delete records any time. This data is private to your account and is not shared.</p>

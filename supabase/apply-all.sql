@@ -316,6 +316,13 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
+-- ---------- 0008: morning check-in sleep (see migrations/0008_morning_checkin.sql) ----------
+-- Last night's sleep, stored with a mood check-in. Nullable: older
+-- check-ins and the full check-in form have no sleep value.
+alter table public.mood_checkins
+  add column if not exists sleep_hours numeric(3,1)
+    check (sleep_hours between 0 and 24);
+
 -- ---------- DB health check (run manually) ----------
 -- select tablename from pg_tables where schemaname='public' order by 1;
 -- select tgname from pg_trigger where tgname='on_auth_user_created';

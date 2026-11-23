@@ -6,7 +6,8 @@ import { useUser } from "@/lib/useUser";
 import { moodTrend, stressSuggestion } from "@/lib/logic";
 import { averageMoodByDay, checkinStreakLocal, localDayKey } from "@/lib/moodPatterns";
 import BreathingExercise from "@/components/BreathingExercise";
-type Check={id:string;mood_score:number;stress_score:number;note?:string;created_at:string};
+import MorningCheckin from "@/components/MorningCheckin";
+type Check={id:string;mood_score:number;stress_score:number;sleep_hours?:number|null;note?:string;created_at:string};
 type AutoMood={moodScore:number;stressScore:number;confidence:number;confidenceLabel:string;sampleCount:number;stressHits:number;calmHits:number;source:string};
 type MoodReading={auto:AutoMood|null;manualLatest:Check|null;manualRecentCount:number;reading:string;readingSource:string;updatedAt:string;disclaimer:string};
 type MoodPatterns={averageMood:number|null;checkins28:number;daysCheckedIn:number;consistency:number;checkedInToday:boolean;checkinStreak:number;trend:{direction:string;delta:number|null;streak:number;volatility:number|null;thisWeekAvg:number|null;prevWeekAvg:number|null};bestWeekday:string|null;bestWeekdayMood:number|null;worstWeekday:string|null;worstWeekdayMood:number|null;mostStableWeekday:string|null;mostStableWeekdayStd:number|null;leastStableWeekday:string|null;leastStableWeekdayStd:number|null;volatility:number|null;moodRange:{min:number|null;max:number|null};correlation:{r:number|null;days:number;key:string;reading:string};hasData:boolean};
@@ -43,6 +44,7 @@ export default function Page(){
       : <p><strong>Not checked in yet today.</strong>{status.streak>0?` Your check-in streak is ${status.streak} day${status.streak===1?"":"s"} — check in below to keep it alive.`:" No streak yet — check in below to start one."}</p>}
     <p className="muted" style={{fontSize:".85rem"}}>A streak counts consecutive days with at least one check-in. These are your self-reported scores — estimates, not a diagnosis.</p>
   </Glass><div style={{height:12}} />
+  <MorningCheckin /><div style={{height:12}} />
   <Glass>
     <h3 style={{marginTop:0}}>Your mood, read automatically</h3>
     <p className="muted">EDITH reads the mood of your recent chats (last 7 days) and works out a mood/stress pair from the words you used — so your stress score keeps working even when you skip a manual check-in. A manual check-in always overrides this reading in the stress score.</p>
@@ -65,7 +67,7 @@ export default function Page(){
   </Glass><div style={{height:12}} />
   <Glass>
     <h3 style={{marginTop:0}}>Guided relaxation</h3>
-    <p className="muted">Six guided sessions — breathing, body scan, muscle relaxation and visualisation — with a player that talks you through each step. Your practice is recorded so you can see it build up.</p>
+    <p className="muted">Seven guided sessions — breathing, body scan, muscle relaxation and visualisation — with a player that talks you through each step, including a 60-second calm-down you can also start from the dashboard. Your practice is recorded so you can see it build up.</p>
     <p><Link className="btn" href="/relax">Open guided relaxation →</Link></p>
   </Glass><div style={{height:12}} />
   <Glass>
@@ -78,7 +80,7 @@ export default function Page(){
     </form>
     {err&&<p className="error" role="alert">{err}</p>}
     {rows.length? <><p>Average mood {t.avgMood}/10 · average stress {t.avgStress}/10. {stressSuggestion(t.avgStress)}</p>
-    <ul>{rows.map(r=><li key={r.id}>{new Date(r.created_at).toLocaleDateString()}: mood {r.mood_score}, stress {r.stress_score}{r.note?` — ${r.note}`:""} <button className="btn btn-danger" onClick={()=>del(r.id)}>Delete</button></li>)}</ul></> : <EmptyState text="No check-ins yet." />}
+    <ul>{rows.map(r=><li key={r.id}>{new Date(r.created_at).toLocaleDateString()}: mood {r.mood_score}, stress {r.stress_score}{r.sleep_hours!==null&&r.sleep_hours!==undefined?`, slept about ${r.sleep_hours}h`:""}{r.note?` — ${r.note}`:""} <button className="btn btn-danger" onClick={()=>del(r.id)}>Delete</button></li>)}</ul></> : <EmptyState text="No check-ins yet." />}
     <p><Link className="btn btn-secondary" href="/journal">Write in your journal →</Link></p>
   </Glass><div style={{height:12}} />
   <Glass>
@@ -101,7 +103,7 @@ export default function Page(){
     </div>
     {selDay&&<>
       <h4 style={{marginBottom:".3rem"}}>{new Date(`${selDay}T12:00:00`).toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</h4>
-      {selRows.length? <ul>{selRows.map(r=><li key={r.id}>{new Date(r.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}: mood {r.mood_score}, stress {r.stress_score}{r.note?` — ${r.note}`:""}</li>)}</ul> : <p className="muted">No check-in on this day.</p>}
+      {selRows.length? <ul>{selRows.map(r=><li key={r.id}>{new Date(r.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}: mood {r.mood_score}, stress {r.stress_score}{r.sleep_hours!==null&&r.sleep_hours!==undefined?`, slept about ${r.sleep_hours}h`:""}{r.note?` — ${r.note}`:""}</li>)}</ul> : <p className="muted">No check-in on this day.</p>}
     </>}
   </Glass><div style={{height:12}} />
   <Glass>

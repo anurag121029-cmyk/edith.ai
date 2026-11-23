@@ -16,12 +16,13 @@ const box = getSession("box-breathing")!;
 const bodyScan = getSession("body-scan")!;
 
 describe("session library", () => {
-  it("has six sessions with the promised lengths", () => {
-    expect(RELAXATION_SESSIONS).toHaveLength(6);
+  it("has seven sessions with the promised lengths", () => {
+    expect(RELAXATION_SESSIONS).toHaveLength(7);
     expect(RELAXATION_SESSIONS.map((s) => s.id)).toEqual([
       "box-breathing",
       "breathing-478",
       "quick-reset",
+      "quick-calm-60",
       "body-scan",
       "muscle-relaxation",
       "calm-place",
@@ -31,6 +32,7 @@ describe("session library", () => {
         ["box-breathing", 2],
         ["breathing-478", 2],
         ["quick-reset", 2],
+        ["quick-calm-60", 1],
         ["body-scan", 5],
         ["muscle-relaxation", 7],
         ["calm-place", 5],
@@ -75,6 +77,38 @@ describe("session library", () => {
       seconds: 6,
       instruction: "Breathe normally for a moment. Notice how much slower everything feels.",
     });
+  });
+
+  it("quick-calm-60 is exactly 60 seconds: six rounds of 4s in / 6s out", () => {
+    const s = getSession("quick-calm-60")!;
+    expect(sessionTotalSeconds(s)).toBe(60);
+    expect(s.minutes).toBe(1);
+    expect(s.steps).toHaveLength(12);
+    expect(s.steps.map((x) => [x.label, x.seconds])).toEqual(
+      Array.from({ length: 6 }, () => [["Breathe in", 4], ["Breathe out", 6]]).flat(),
+    );
+  });
+
+  it("quick-calm-60 walks inhale → exhale every 10 seconds and ends at 60s", () => {
+    const s = getSession("quick-calm-60")!;
+    expect(phaseAt(s, 0).label).toBe("Breathe in");
+    expect(phaseAt(s, 4).label).toBe("Breathe out");
+    expect(phaseAt(s, 10).label).toBe("Breathe in");
+    expect(phaseAt(s, 10).stepIndex).toBe(2);
+    expect(phaseAt(s, 54).label).toBe("Breathe out");
+    expect(phaseAt(s, 59).done).toBe(false);
+    expect(phaseAt(s, 60).done).toBe(true);
+    expect(sessionDone(s, 60)).toBe(true);
+    expect(progressAt(s, 30)).toBe(0.5);
+  });
+
+  it("quick-calm-60 circle grows on the in-breath and shrinks on the out-breath", () => {
+    const s = getSession("quick-calm-60")!;
+    expect(relaxScale(s, phaseAt(s, 0))).toBeCloseTo(0.6);
+    expect(relaxScale(s, phaseAt(s, 2))).toBeCloseTo(0.8);
+    expect(relaxScale(s, phaseAt(s, 4))).toBeCloseTo(1);
+    expect(relaxScale(s, phaseAt(s, 7))).toBeCloseTo(0.8);
+    expect(relaxScale(s, phaseAt(s, 10))).toBeCloseTo(0.6);
   });
 
   it("getSession returns null for an unknown id", () => {

@@ -6,6 +6,8 @@ import { useUser } from "@/lib/useUser";
 import { taskCompletion, tasksDueToday, workloadSummary, moodTrend, type TaskLike } from "@/lib/logic";
 import { pendingTasks } from "@/lib/pending";
 import BreathingExercise from "@/components/BreathingExercise";
+import MorningCheckin from "@/components/MorningCheckin";
+import Calm60Modal from "@/components/Calm60Modal";
 
 type StressApi = {
   score: number | null;
@@ -63,6 +65,7 @@ export default function Page() {
   const [workloadRefreshing, setWorkloadRefreshing] = useState(false);
   const [patterns, setPatterns] = useState<PatternsApi | null>(null);
   const [patternsErr, setPatternsErr] = useState("");
+  const [calmOpen, setCalmOpen] = useState(false);
   async function loadWorkload() {
     setWorkloadRefreshing(true);
     try {
@@ -194,6 +197,24 @@ export default function Page() {
             <Link className="btn btn-secondary" href="/study">Study (supporting) →</Link>
           </p>
         </Glass>
+
+        {/* Morning check-in — two taps, ten seconds. */}
+        <MorningCheckin />
+
+        {/* Calm in 60 seconds — one minute of slow breathing, right here. */}
+        <Glass>
+          <h2 style={{ marginTop: 0 }}>Need to reset right now?</h2>
+          <p className="muted" style={{ fontSize: ".9rem" }}>
+            One minute of slow breathing — in for 4, out for 6 — with a circle to follow. No setup, no sign-in needed to try it.
+          </p>
+          <p style={{ margin: ".8rem 0 0" }}>
+            <button type="button" className="btn" onClick={() => setCalmOpen(true)} style={{ fontSize: "1.05rem", padding: ".8rem 1.4rem" }}>
+              🫁 Calm in 60 seconds
+            </button>
+          </p>
+          <p style={{ marginTop: ".8rem" }}><Link className="btn btn-secondary" href="/relax">All guided sessions →</Link></p>
+        </Glass>
+        <Calm60Modal open={calmOpen} onClose={() => setCalmOpen(false)} />
 
         {/* Today, understood — daily wellbeing + briefing from your patterns. */}
         <Glass>

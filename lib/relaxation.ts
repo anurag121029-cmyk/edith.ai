@@ -236,6 +236,16 @@ const RESET_PATTERN = [
   { label: "Breathe out", seconds: 6, instruction: "Breathe out for six, longer than the in-breath. Let your shoulders drop." },
 ];
 
+/**
+ * 60-second calm: six rounds of 4s in / 6s out — the same slow rhythm
+ * as the quick reset, but exactly one minute long so it can run as a
+ * single-tap "Calm in 60 seconds" button. 6 × (4 + 6) = 60 seconds.
+ */
+const CALM60_PATTERN = [
+  { label: "Breathe in", seconds: 4, instruction: "Breathe in gently for four — slow and easy." },
+  { label: "Breathe out", seconds: 6, instruction: "Breathe out for six, longer than the in-breath. Let your shoulders drop." },
+];
+
 const FOUR_SEVEN_EIGHT = [
   { label: "Inhale", seconds: 4, instruction: "Breathe in quietly through your nose for four." },
   { label: "Hold", seconds: 7, instruction: "Hold for seven. Keep your shoulders relaxed." },
@@ -301,6 +311,14 @@ export const RELAXATION_SESSIONS: SessionDef[] = [
     category: "breathing",
     minutes: 2,
     steps: repeatPattern(120, RESET_PATTERN),
+  },
+  {
+    id: "quick-calm-60",
+    title: "Calm in 60 seconds",
+    tagline: "One minute of slow breathing — in for 4, out for 6 — when you need to reset right now.",
+    category: "breathing",
+    minutes: 1,
+    steps: cycleSteps(6, CALM60_PATTERN),
   },
   {
     id: "body-scan",
